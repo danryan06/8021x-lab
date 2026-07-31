@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dot1x}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dot1x_lab_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-dot1x_lab}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dot1x} -d ${POSTGRES_DB:-dot1x_lab}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://dot1x:dot1x_lab_change_me@db:5432/dot1x_lab}
+      FREERADIUS_CONFIG_DIR: /var/lib/dot1x-lab/freeradius
+      CA_DATA_DIR: /var/lib/dot1x-lab/ca
+    ports:
+      - "8000:8000"
+    volumes:
+      - freeradius_runtime:/var/lib/dot1x-lab/freeradius
+      - ca_data:/var/lib/dot1x-lab/ca
+      - ./services/freeradius/templates:/app/services/freeradius/templates:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  freeradius:
+    build:
+      context: ./services/freeradius
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    volumes:
+      - freeradius_runtime:/etc/freeradius/dot1x-lab
+      - ./services/freeradius/templates:/etc/freeradius/dot1x-lab-templates:ro
+    depends_on:
+      - db
+    # Phase 0: container starts with stock config; backend render/reload lands in Phase 1.
+
+volumes:
+  pgdata:
+  freeradius_runtime:
+  ca_data:

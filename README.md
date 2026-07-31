@@ -6,29 +6,60 @@ The easiest way for Wi-Fi and network engineers to learn, test, and demonstrate 
 
 > Lab / education focused. Not hardened for production use.
 
-## Status
+## Quick start
 
-Foundation scaffolding is in progress. See [`docs/roadmap.md`](docs/roadmap.md) once added.
+```bash
+cp .env.example .env
+./scripts/bootstrap.sh
+# or: make bootstrap
+```
 
-## Vision
+- **UI:** http://localhost:3000  
+- **API docs:** http://localhost:8000/docs  
+- **Default admin:** values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
 
-- Deploy an 802.1X lab quickly
-- Configure RADIUS visually
-- Manage users, certificates, and RADIUS clients
-- Test PEAP, EAP-TLS, and MAB
-- Make authentication attempts observable and understandable
+See [docs/developer-setup.md](docs/developer-setup.md) for details.
 
-## Planned stack
+## What this is
+
+| You get | You do not get (yet / by design) |
+|---------|-----------------------------------|
+| Visual lab control plane | FreeRADIUS replacement |
+| Local users + bulk generator | Active Directory / LDAP |
+| RADIUS client management | Vendor switch/WLC generators |
+| CA + FreeRADIUS integration seams | Production-hardened PKI / NAC |
+| Auth event logging architecture | Cloud identity providers |
+
+## Stack
 
 | Layer | Technology |
 |-------|------------|
-| Backend | Python 3.12, FastAPI |
-| Frontend | React + TypeScript + Vite |
-| Database | PostgreSQL |
+| Backend | Python 3.12, FastAPI, SQLAlchemy, Alembic |
+| Frontend | React, TypeScript, Vite, Tailwind |
+| Database | PostgreSQL 16 |
 | RADIUS | FreeRADIUS |
-| CA | Pluggable (`openssl` first, `step-ca` next) |
+| CA | Pluggable (`openssl` now, `step-ca` next) |
 | Deploy | Docker Compose |
+
+## Repository layout
+
+```text
+backend/          FastAPI control plane
+frontend/         React SPA
+services/         FreeRADIUS + CA adapter notes/templates
+docs/             Architecture, setup, deployment, roadmap
+scripts/          Bootstrap helpers
+docker-compose.yml
+```
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Developer setup](docs/developer-setup.md)
+- [Deployment](docs/deployment.md)
+- [Roadmap](docs/roadmap.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## License
 
-Apache License 2.0
+Apache License 2.0 — see [LICENSE](LICENSE).
