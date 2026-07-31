@@ -33,6 +33,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # Use a short TCP probe so a slow DB does not mark the API process unhealthy.
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   frontend:
     build:
@@ -42,7 +53,14 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
 
   freeradius:
     build:
@@ -54,8 +72,15 @@ services:
       - freeradius_runtime:/etc/freeradius/dot1x-lab
       - ./services/freeradius/templates:/etc/freeradius/dot1x-lab-templates:ro
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     # Phase 0: container starts with stock config; backend render/reload lands in Phase 1.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x freeradius >/dev/null || test -r /proc/1/comm"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   pgdata:

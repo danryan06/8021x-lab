@@ -12,13 +12,15 @@ router = APIRouter(tags=["health"])
 def health() -> HealthResponse:
     components: list[HealthComponent] = []
 
-    # Database
+    # Database — keep the probe fast so /api/health stays usable under load.
     try:
         with SessionLocal() as db:
             db.execute(text("SELECT 1"))
         components.append(HealthComponent(name="database", status="ok"))
     except Exception as exc:
-        components.append(HealthComponent(name="database", status="error", detail=str(exc)))
+        # Collapse multi-line driver traces into a single detail string for the UI.
+        detail = " ".join(str(exc).split())
+        components.append(HealthComponent(name="database", status="error", detail=detail[:500]))
 
     settings = get_settings()
     components.append(
