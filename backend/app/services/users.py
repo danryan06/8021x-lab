@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.integrations.freeradius.sql_sync import delete_user_from_radcheck, sync_user_to_radcheck
 from app.models.entities import RadiusUser, UserStatus
 from app.schemas.entities import (
     GenerateUsersRequest,
@@ -15,7 +16,7 @@ from app.schemas.entities import (
     RadiusUserCreate,
     RadiusUserUpdate,
 )
-from app.security import hash_password
+from app.security import hash_password, nt_hash_password
 
 
 def list_users(db: Session, lab_id: UUID | None = None) -> list[RadiusUser]:
@@ -34,6 +35,7 @@ def create_user(db: Session, payload: RadiusUserCreate) -> RadiusUser:
         lab_id=payload.lab_id,
         username=payload.username,
         password_hash=hash_password(payload.password),
+        nt_hash=nt_hash_password(payload.password),
         groups=payload.groups,
         status=payload.status,
         expires_at=payload.expires_at,
@@ -41,12 +43,14 @@ def create_user(db: Session, payload: RadiusUserCreate) -> RadiusUser:
     db.add(user)
     db.commit()
     db.refresh(user)
+    sync_user_to_radcheck(db, user)
     return user
 
 
 def update_user(db: Session, user: RadiusUser, payload: RadiusUserUpdate) -> RadiusUser:
     if payload.password is not None:
         user.password_hash = hash_password(payload.password)
+        user.nt_hash = nt_hash_password(payload.password)
     if payload.groups is not None:
         user.groups = payload.groups
     if payload.status is not None:
@@ -55,12 +59,15 @@ def update_user(db: Session, user: RadiusUser, payload: RadiusUserUpdate) -> Rad
         user.expires_at = payload.expires_at
     db.commit()
     db.refresh(user)
+    sync_user_to_radcheck(db, user)
     return user
 
 
 def delete_user(db: Session, user: RadiusUser) -> None:
+    username = user.username
     db.delete(user)
     db.commit()
+    delete_user_from_radcheck(db, username)
 
 
 def _random_password(length: int) -> str:
@@ -90,6 +97,7 @@ def generate_users(db: Session, payload: GenerateUsersRequest) -> GenerateUsersR
             lab_id=payload.lab_id,
             username=username,
             password_hash=hash_password(password),
+            nt_hash=nt_hash_password(password),
             groups=payload.groups,
             status=UserStatus.active,
         )
@@ -101,6 +109,7 @@ def generate_users(db: Session, payload: GenerateUsersRequest) -> GenerateUsersR
     db.commit()
     for user in created_users:
         db.refresh(user)
+        sync_user_to_radcheck(db, user)
 
     return GenerateUsersResponse(
         created=len(created_users),

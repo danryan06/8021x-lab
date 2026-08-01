@@ -18,8 +18,8 @@ export function EventsPage() {
       <section>
         <h1 className="font-display text-3xl font-bold">Authentication Events</h1>
         <p className="mt-1 text-ink/70">
-          Human-readable RADIUS outcomes. The ingestion worker is scaffolded; live FreeRADIUS
-          linelog parsing arrives in Phase 1.
+          Live FreeRADIUS outcomes from the pinned DOT1X linelog (success, failure, and reason
+          when available).
         </p>
       </section>
 

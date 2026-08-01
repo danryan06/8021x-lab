@@ -1,23 +1,39 @@
 FROM debian:bookworm-slim
 
-# Phase 0: stock FreeRADIUS from Debian packages.
-# Avoids freeradius/freeradius-server image layers that break on some
-# containerd/overlayfs hosts (whiteout conversion failures).
-# Lab-rendered config is mounted at /etc/freeradius/dot1x-lab and will be
-# included from sites in Phase 1.
+# FreeRADIUS data plane for 802.1X Lab.
+# Debian packages avoid fragile upstream image layers on some hosts.
+# Lab-rendered clients + auth logs live on the shared runtime volume.
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    FR_DIR=/etc/freeradius/3.0 \
+    RUNTIME_DIR=/etc/freeradius/dot1x-lab
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         freeradius \
         freeradius-utils \
+        freeradius-postgresql \
         ca-certificates \
+        openssl \
+        postgresql-client \
         procps \
+        make \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /etc/freeradius/dot1x-lab /etc/freeradius/dot1x-lab-templates
+    && mkdir -p /etc/freeradius/dot1x-lab /etc/freeradius/dot1x-lab-templates \
+        /var/run/freeradius /etc/freeradius/dot1x-lab/logs \
+    && touch /etc/freeradius/dot1x-lab/clients.dot1x.conf \
+    && chown -R freerad:freerad /etc/freeradius/dot1x-lab /var/run/freeradius
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY scripts/generate-eap-certs.sh /usr/local/bin/generate-eap-certs.sh
+COPY templates/ /etc/freeradius/dot1x-lab-templates/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/generate-eap-certs.sh \
+    && bash /usr/local/bin/generate-eap-certs.sh /etc/freeradius/3.0/certs \
+    && chown -R freerad:freerad /etc/freeradius/3.0/certs \
+    && chmod 640 /etc/freeradius/3.0/certs/*.key \
+    && chmod 644 /etc/freeradius/3.0/certs/*.pem /etc/freeradius/3.0/certs/*.crt \
+    || true
 
 EXPOSE 1812/udp 1813/udp
 
-# Foreground mode so the container stays up under Compose.
-CMD ["freeradius", "-f"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

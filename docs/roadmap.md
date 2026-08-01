@@ -1,6 +1,6 @@
 # Roadmap
 
-## Phase 0 — Foundation (current)
+## Phase 0 — Foundation (done)
 
 - Open-source baseline (license, docs, contributing)
 - Docker Compose monorepo
@@ -11,12 +11,12 @@
 - Frontend shell (dashboard, users, clients, events, wizard placeholder)
 - Simple / Advanced mode toggle
 
-## Phase 1 — RADIUS live path
+## Phase 1 — RADIUS live path (current)
 
 - FreeRADIUS SQL modules wired to Postgres
-- Client sync + reload
-- PEAP with local users
-- Auth event ingestion and human-readable results
+- Client sync + reload into the running FreeRADIUS container
+- PEAP with local users (NT-Password / MSCHAPv2)
+- Auth event ingestion (`DOT1X|…` linelog) and Events UI
 
 ## Phase 2 — PKI + EAP-TLS
 

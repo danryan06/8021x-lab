@@ -84,7 +84,7 @@ class RadiusUser(Base):
     lab_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
     username: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    # NT-hash placeholder for future MSCHAPv2/PEAP (Phase 1). Never log this value.
+    # FreeRADIUS NT-Password value (0x + hex). Never log this value.
     nt_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     groups: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     status: Mapped[UserStatus] = mapped_column(
