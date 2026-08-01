@@ -21,9 +21,10 @@ cp .env.example .env
 ### Test authentication from the UI
 
 1. Log in → open **Wizard** (guided PEAP or EAP-TLS) or **Auth Test**.
-2. Follow the wizard steps, or create a user/cert and run a test from Auth Test — no CLI required.
-3. Confirm Accept/Reject and a live row under **Auth Events**.
-4. Toggle **Dark / Light** in the header anytime.
+2. On the Dashboard, confirm the **RADIUS target** IP (Auto from DHCP/host, or Manual).
+3. Follow the wizard steps, or create a user/cert and run a test from Auth Test — no CLI required.
+4. Confirm Accept/Reject and a live row under **Auth Events**.
+5. Toggle **Dark / Light** in the header anytime.
 
 See [docs/developer-setup.md](docs/developer-setup.md) for sync/reload details and optional `make test-peap`.
 

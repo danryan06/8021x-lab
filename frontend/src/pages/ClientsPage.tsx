@@ -5,6 +5,7 @@ import {
   type Lab,
   type RadiusClient,
 } from "../api/client";
+import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
 import { useMode } from "../modes/ModeContext";
 
 export function ClientsPage() {
@@ -92,6 +93,8 @@ export function ClientsPage() {
 
       {error && <p className="text-fail">{error}</p>}
       {status && <p className="text-signal">{status}</p>}
+
+      {labId && <RadiusTargetPanel labId={labId} />}
 
       <div className="flex flex-wrap items-end gap-4">
         <label className="block text-sm">

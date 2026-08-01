@@ -9,6 +9,7 @@ import {
   type RadiusClient,
   type RadiusUser,
 } from "../api/client";
+import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
 import { useMode } from "../modes/ModeContext";
 
 export function AuthTestPage() {
@@ -130,9 +131,11 @@ export function AuthTestPage() {
       {error && <p className="text-fail">{error}</p>}
       {caNote && <p className="text-signal">{caNote}</p>}
 
+      {labId && <RadiusTargetPanel labId={labId} compact />}
+
       <section className="grid gap-4 ui-panel p-5 md:grid-cols-2">
         <div>
-          <h2 className="font-semibold">RADIUS context</h2>
+          <h2 className="font-semibold">In-Compose test context</h2>
           {context ? (
             <dl className="mt-3 space-y-2 font-mono text-sm">
               <div>

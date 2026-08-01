@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, auth_tests, ca, clients, events, freeradius, health, labs, users
+from app.api import auth, auth_tests, ca, clients, events, freeradius, health, labs, radius_target, users
 from app.config import get_settings
 from app.db import SessionLocal
 from app.integrations.freeradius.sql_sync import sync_all_users
@@ -64,6 +64,7 @@ app.include_router(events.router, prefix="/api")
 app.include_router(ca.router, prefix="/api")
 app.include_router(auth_tests.router, prefix="/api")
 app.include_router(freeradius.router, prefix="/api")
+app.include_router(radius_target.router, prefix="/api")
 
 
 @app.get("/")

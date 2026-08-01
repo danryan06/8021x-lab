@@ -29,6 +29,10 @@ services:
       FREERADIUS_AUTH_PORT: "1812"
       FREERADIUS_LAB_SECRET: ${FREERADIUS_LAB_SECRET:-testing123}
       FREERADIUS_CA_PATH: /var/lib/dot1x-lab/freeradius/certs/ca.pem
+      RADIUS_ADVERTISE_IP: ${RADIUS_ADVERTISE_IP:-}
+      RADIUS_ADVERTISE_AUTH_PORT: ${RADIUS_ADVERTISE_AUTH_PORT:-1812}
+      RADIUS_ADVERTISE_ACCT_PORT: ${RADIUS_ADVERTISE_ACCT_PORT:-1813}
+      RADIUS_HOST_IP_FILE: /var/lib/dot1x-lab/freeradius/host-ip
       CA_DATA_DIR: /var/lib/dot1x-lab/ca
     ports:
       - "8000:8000"

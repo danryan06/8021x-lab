@@ -8,6 +8,7 @@ import {
   type Lab,
 } from "../api/client";
 import { useMode } from "../modes/ModeContext";
+import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
 import { Button, PageHeader, Panel, StatusBanner } from "../components/ui";
 
 function statusColor(status: string): string {
@@ -71,6 +72,8 @@ export function DashboardPage() {
 
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
       {syncMsg && <StatusBanner tone="ok">{syncMsg}</StatusBanner>}
+
+      <RadiusTargetPanel labId={labs[0]?.id} />
 
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {(health?.components || []).map((c) => (

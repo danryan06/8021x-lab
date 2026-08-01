@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # FreeRADIUS EAP server CA copied onto the shared runtime volume.
     freeradius_ca_path: str = "/var/lib/dot1x-lab/freeradius/certs/ca.pem"
     freeradius_health_max_age_seconds: int = 45
+    # Advertised RADIUS target for real NAS/AP devices (DHCP/auto + manual override).
+    radius_advertise_ip: str = ""
+    radius_advertise_auth_port: int = 1812
+    radius_advertise_acct_port: int = 1813
+    # Optional host-written file (bootstrap) with the LAN/DHCP IPv4 to advertise.
+    radius_host_ip_file: str = "/var/lib/dot1x-lab/freeradius/host-ip"
     ca_data_dir: str = "/var/lib/dot1x-lab/ca"
     ca_adapter: str = "openssl"
 

@@ -50,6 +50,15 @@ Or one shot: `make bootstrap`.
 
 UI PEAP/EAP-TLS tests use the Compose `lab-docker-host` client (`FREERADIUS_LAB_SECRET`, default `testing123`). NAS clients you create are for real switches/APs.
 
+### RADIUS target IP (what the NAS points to)
+
+The Dashboard / Clients / Auth Test / Wizard show a **RADIUS target** card:
+
+- **Auto** — uses host DHCP/LAN detection (`scripts/detect-host-ip.sh` → `RADIUS_ADVERTISE_IP` + shared `host-ip` file)
+- **Manual** — pin any IPv4 in the UI
+
+Point the switch/WLC at `effective_ip:1812` (acct `1813`), then add a **RADIUS Client** whose IP matches the NAS source address.
+
 ## CLI PEAP smoke test (optional)
 
 ```bash

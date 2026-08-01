@@ -20,9 +20,13 @@ Published ports (default):
 
 ### Reaching FreeRADIUS from a real NAS
 
-The NAS must reach the host IP on UDP 1812/1813. On Docker Desktop (macOS/Windows), publish those ports and point the RADIUS client at the host. On Linux, bridge networking usually works with the host's LAN IP; host networking is an advanced option for lab appliances.
+1. Set the lab **RADIUS target** in the UI (Dashboard → RADIUS target):
+   - **Auto** picks up the host DHCP/LAN IP via bootstrap (`RADIUS_ADVERTISE_IP` / `host-ip` file)
+   - **Manual** pins a specific IPv4 if DHCP is wrong or you use a VIP
+2. On the NAS/WLC, point RADIUS at that advertise IP, UDP **1812** (auth) / **1813** (acct).
+3. In **RADIUS Clients**, add the NAS **source** IP/CIDR + shared secret so FreeRADIUS accepts it.
 
-Update RADIUS clients in the UI (or API) to match the NAS source IP and shared secret.
+On Docker Desktop (macOS/Windows), published ports map to the host — use the host LAN IP as the target. Compose containers cannot see the host DHCP address by themselves; `make bootstrap` / `scripts/detect-host-ip.sh` writes it in for Auto mode.
 
 ## Future appliance targets
 

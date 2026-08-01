@@ -8,6 +8,7 @@ import {
   type RadiusClient,
   type RadiusUser,
 } from "../api/client";
+import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
 import { Button, Field, PageHeader, Panel, StatusBanner } from "../components/ui";
 
 type AuthMethod = "peap" | "eap_tls" | "mab";
@@ -555,9 +556,10 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="font-semibold">RADIUS client (for real NAS)</h2>
             <p className="text-sm text-ink/60">
-              UI auth tests use the Compose lab-docker-host secret. This client is for your
-              switch/AP documentation and file sync.
+              First confirm the lab RADIUS target IP (what the NAS points to). Then add this
+              client as the NAS source IP FreeRADIUS will accept.
             </p>
+            {labId && <RadiusTargetPanel labId={labId} compact />}
             <Field label="Name">
               <input
                 className="ui-input"

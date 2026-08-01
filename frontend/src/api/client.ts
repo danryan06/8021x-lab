@@ -154,3 +154,26 @@ export type FreeRadiusSyncResponse = {
   lab_ids: string[];
   detail: string;
 };
+
+export type RadiusTargetCandidate = {
+  ip: string;
+  interface: string | null;
+  source: string;
+  likely_docker: boolean;
+  is_private: boolean;
+};
+
+export type RadiusTarget = {
+  lab_id: string | null;
+  mode: "auto" | "manual";
+  advertise_ip: string | null;
+  effective_ip: string | null;
+  auth_port: number;
+  acct_port: number;
+  shared_secret_hint: string;
+  lab_shared_secret: string;
+  candidates: RadiusTargetCandidate[];
+  nas_instructions: string;
+  warning: string | null;
+  auto_source: string | null;
+};
