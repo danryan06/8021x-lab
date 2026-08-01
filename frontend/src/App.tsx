@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./api/AuthContext";
 import { Layout } from "./components/Layout";
+import { AuthTestPage } from "./pages/AuthTestPage";
 import { ClientsPage } from "./pages/ClientsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EventsPage } from "./pages/EventsPage";
@@ -28,6 +29,7 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="test" element={<AuthTestPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="events" element={<EventsPage />} />

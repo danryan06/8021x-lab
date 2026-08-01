@@ -16,7 +16,7 @@
 | `frontend` | React SPA (Vite), served via nginx in Compose |
 | `backend` | FastAPI control plane, config render, CA adapter, event ingestion |
 | `db` | PostgreSQL — app data **and** FreeRADIUS SQL tables |
-| `freeradius` | RADIUS authentication data plane (PEAP/MSCHAPv2 in Phase 1) |
+| `freeradius` | RADIUS authentication data plane (PEAP/MSCHAPv2 + basic EAP-TLS) |
 | CA volume | Local openssl adapter data (step-ca adapter planned) |
 
 ## Control vs data plane
@@ -54,7 +54,7 @@ Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL table
 3. Backend writes `reload.request` on the shared volume.
 4. FreeRADIUS entrypoint watcher runs `radmin hup` (control socket) or sends `SIGHUP`.
 
-Stock `localhost` / `testing123` remains available for local PEAP tests.
+Stock `localhost` / `testing123` and the Compose `lab-docker-host` ranges remain available for local PEAP/EAP-TLS tests. The **Auth Test** API runs `eapol_test` inside the backend container against service DNS `freeradius:1812`.
 
 ### Password / MSCHAPv2 strategy
 
@@ -91,7 +91,7 @@ Adapters:
 - **openssl** (V1) — local PEM tree under `CA_DATA_DIR`
 - **step-ca** (stub) — reserved for Phase 2
 
-PEAP uses FreeRADIUS lab EAP server certificates generated in the FreeRADIUS image (`certs/bootstrap`). Full client PKI / EAP-TLS is Phase 2.
+PEAP uses FreeRADIUS lab EAP server certificates generated in the FreeRADIUS image (`certs/bootstrap`), exported to the shared volume for UI `eapol_test`. Lab openssl CAs can be published into `trusted/ca-bundle.pem` for basic EAP-TLS client trust. Richer PKI UX / CRL remains Phase 2 polish.
 
 ## Out of scope (for now)
 

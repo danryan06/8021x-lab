@@ -25,6 +25,10 @@ services:
       FREERADIUS_CONFIG_DIR: /var/lib/dot1x-lab/freeradius
       FREERADIUS_AUTH_LOG_PATH: /var/lib/dot1x-lab/freeradius/logs/auth.log
       FREERADIUS_RELOAD_COMMAND: ${FREERADIUS_RELOAD_COMMAND:-echo "reload-requested"}
+      FREERADIUS_HOST: freeradius
+      FREERADIUS_AUTH_PORT: "1812"
+      FREERADIUS_LAB_SECRET: ${FREERADIUS_LAB_SECRET:-testing123}
+      FREERADIUS_CA_PATH: /var/lib/dot1x-lab/freeradius/certs/ca.pem
       CA_DATA_DIR: /var/lib/dot1x-lab/ca
     ports:
       - "8000:8000"

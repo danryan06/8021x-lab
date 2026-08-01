@@ -5,7 +5,8 @@
 - Docker Desktop (or Docker Engine + Compose v2)
 - Make (optional but recommended)
 - Node 20+ and Python 3.12+ only if running services outside Compose
-- Optional for PEAP verification on the host: `eapoltest` (`sudo apt install eapoltest`)
+- Optional for host-side PEAP verification: `eapoltest` (`sudo apt install eapoltest`)
+  - Not required for UI tests — the backend image includes `eapoltest`
 
 ## Quick start
 
@@ -21,9 +22,40 @@ Or one shot: `make bootstrap`.
 - UI: http://localhost:3000 (nginx proxies `/api` to the backend)
 - API docs: http://localhost:8000/docs (also available via http://localhost:3000/docs)
 - Default admin: values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
-- RADIUS: UDP `1812` / `1813` (FreeRADIUS with SQL + PEAP)
+- RADIUS: UDP `1812` / `1813` (FreeRADIUS with SQL + PEAP / EAP-TLS)
 
 **Important:** run `make migrate` before relying on RADIUS auth — it creates FreeRADIUS SQL tables (`radcheck`, `nas`, …). The FreeRADIUS container waits for those tables on startup.
+
+## Test from the UI (preferred)
+
+1. Bootstrap the stack (`make bootstrap`).
+2. Log in at http://localhost:3000.
+3. **Guided path:** open **Wizard** → choose PEAP → create/select lab → create user → create RADIUS client → run auth test → open **Events**.
+4. **Direct path:** open **Auth Test**:
+   - Select a lab user, enter the password you set at create time
+   - Click **Run authentication test** (or **Wrong-password test**)
+   - Confirm Accept/Reject and that an event appears under **Auth Events** (auto-refreshes)
+5. **EAP-TLS (basic):** on Auth Test, switch method to EAP-TLS → **Ensure CA + issue client cert** → download bundle if needed → **Run authentication test**.
+6. **Dashboard** shows live DB / API / FreeRADIUS health and the last auth event. Use **Sync to FreeRADIUS** after bulk changes if you want an explicit resync/reload.
+
+### What syncs / reloads
+
+| Action | FreeRADIUS effect |
+|--------|-------------------|
+| Create/update/delete user | Upsert/delete `radcheck` NT-Password (+ `radusergroup`) |
+| Create/update/delete client | Rewrite `clients.dot1x.conf`, mirror `nas`, write `reload.request` → `radmin hup` |
+| Ensure lab CA / issue client cert | Publish lab CA into shared `trusted/ca-bundle.pem`, reload |
+| Auth Test (PEAP/EAP-TLS) | Backend runs `eapol_test` → FreeRADIUS → linelog → Events |
+
+UI PEAP/EAP-TLS tests use the Compose `lab-docker-host` client (`FREERADIUS_LAB_SECRET`, default `testing123`). NAS clients you create are for real switches/APs.
+
+## CLI PEAP smoke test (optional)
+
+```bash
+make test-peap
+```
+
+Or manually with host `eapol_test` against `127.0.0.1:1812` / `testing123` (see earlier Phase 1 notes / script `scripts/test-peap.sh`).
 
 ## Common commands
 
@@ -34,44 +66,8 @@ Or one shot: `make bootstrap`.
 | `make logs` | Tail logs |
 | `make migrate` | Run Alembic migrations (app + FreeRADIUS SQL schema) |
 | `make seed` | Seed a default lab |
+| `make test-peap` | CLI PEAP smoke test |
 | `make backend-shell` | Shell into backend container |
-
-## Phase 1 — PEAP smoke test
-
-1. Bootstrap the stack (`make bootstrap`).
-2. Log in and note a lab id (`GET /api/labs`), or use the seeded Default Lab.
-3. Create a RADIUS user via API/UI (password is converted to NT-hash for FreeRADIUS).
-4. From the FreeRADIUS container (uses stock `localhost` / `testing123`):
-
-```bash
-# Copy the lab EAP CA out for eapol_test (once):
-docker compose cp freeradius:/etc/freeradius/3.0/certs/ca.pem /tmp/dot1x-ca.pem
-
-# Create an eapol_test config (replace USER/PASS):
-cat >/tmp/peap.conf <<'EOF'
-network={
-  key_mgmt=WPA-EAP
-  eap=PEAP
-  identity="USER"
-  password="PASS"
-  phase2="auth=MSCHAPV2"
-  # Lab only — accept the FreeRADIUS bootstrap CA:
-  ca_cert="/tmp/dot1x-ca.pem"
-}
-EOF
-
-# Host (if eapoltest is installed):
-eapol_test -c /tmp/peap.conf -a 127.0.0.1 -p 1812 -s testing123 -r 1
-
-# Or inside a tooling container on the Compose network:
-docker compose exec freeradius bash -c 'apt-get update && apt-get install -y eapoltest'
-```
-
-5. Confirm an event: `GET /api/events` or the Events page in the UI.
-
-### Client sync check
-
-Creating/updating/deleting a client via `/api/clients` rewrites `clients.dot1x.conf`, upserts `nas`, and touches `reload.request` so the running FreeRADIUS process reloads. Point a NAS (or a container whose source IP matches the client) at UDP 1812 with that shared secret.
 
 ## Local backend (optional)
 

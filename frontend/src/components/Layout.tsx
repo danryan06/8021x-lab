@@ -4,6 +4,7 @@ import { useMode } from "../modes/ModeContext";
 
 const links = [
   { to: "/", label: "Dashboard" },
+  { to: "/test", label: "Auth Test" },
   { to: "/users", label: "Users" },
   { to: "/clients", label: "RADIUS Clients" },
   { to: "/events", label: "Auth Events" },

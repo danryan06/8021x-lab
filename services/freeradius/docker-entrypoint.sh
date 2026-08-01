@@ -9,12 +9,15 @@ CLIENTS_FILE="${RUNTIME_DIR}/clients.dot1x.conf"
 RELOAD_FLAG="${RUNTIME_DIR}/reload.request"
 PID_FILE="${PID_FILE:-/var/run/freeradius/freeradius.pid}"
 
-mkdir -p "${RUNTIME_DIR}" "${LOG_DIR}" /var/run/freeradius
+mkdir -p "${RUNTIME_DIR}" "${LOG_DIR}" "${RUNTIME_DIR}/certs" "${RUNTIME_DIR}/trusted" /var/run/freeradius
 touch "${CLIENTS_FILE}"
 chmod 644 "${CLIENTS_FILE}" || true
 # World-readable lab auth log so the backend worker can tail it from the shared volume.
 touch "${LOG_DIR}/auth.log"
 chmod 666 "${LOG_DIR}/auth.log" || true
+# Heartbeat file polled by the control-plane /api/health FreeRADIUS check.
+echo "starting" >"${RUNTIME_DIR}/health.status"
+chmod 666 "${RUNTIME_DIR}/health.status" || true
 
 # Render SQL module connection from environment (Compose db service).
 SQL_CONF="${FR_DIR}/mods-available/sql"
@@ -85,7 +88,7 @@ for i in $(seq 1 60); do
 	sleep 1
 done
 
-# Ensure EAP lab certs exist for PEAP server certificate presentation.
+# Ensure EAP lab certs exist for PEAP/EAP-TLS server certificate presentation.
 CERT_DIR="${FR_DIR}/certs"
 echo "Ensuring FreeRADIUS EAP lab certificates..."
 bash /usr/local/bin/generate-eap-certs.sh "${CERT_DIR}" || true
@@ -93,7 +96,22 @@ bash /usr/local/bin/generate-eap-certs.sh "${CERT_DIR}" || true
 chown -R freerad:freerad "${CERT_DIR}" 2>/dev/null || true
 chmod 640 "${CERT_DIR}"/*.key 2>/dev/null || true
 chmod 644 "${CERT_DIR}"/*.pem "${CERT_DIR}"/*.crt 2>/dev/null || true
-if [[ -f "${CERT_DIR}/server.pem" && -f "${CERT_DIR}/server.key" && -f "${CERT_DIR}/ca.pem" ]]; then
+
+# Export server CA onto the shared volume for backend eapol_test (PEAP/EAP-TLS).
+if [[ -f "${CERT_DIR}/ca.pem" ]]; then
+	cp "${CERT_DIR}/ca.pem" "${RUNTIME_DIR}/certs/ca.pem"
+	chmod 644 "${RUNTIME_DIR}/certs/ca.pem" || true
+	# Seed trust bundle so EAP-TLS ca_file path always exists; lab CAs are appended by the API.
+	if [[ ! -f "${RUNTIME_DIR}/trusted/ca-bundle.pem" ]]; then
+		cp "${CERT_DIR}/ca.pem" "${RUNTIME_DIR}/trusted/ca-bundle.pem"
+		chmod 644 "${RUNTIME_DIR}/trusted/ca-bundle.pem" || true
+	fi
+fi
+
+configure_eap_certs() {
+	if [[ ! -f "${CERT_DIR}/server.pem" || ! -f "${CERT_DIR}/server.key" || ! -f "${CERT_DIR}/ca.pem" ]]; then
+		return 0
+	fi
 	EAP_MOD="${FR_DIR}/mods-available/eap"
 	# Bootstrap keys use passphrase "whatever"; our openssl fallback is unencrypted.
 	if grep -q "ENCRYPTED" "${CERT_DIR}/server.key" 2>/dev/null; then
@@ -101,13 +119,22 @@ if [[ -f "${CERT_DIR}/server.pem" && -f "${CERT_DIR}/server.key" && -f "${CERT_D
 	else
 		KEY_PASS_LINE='		private_key_password ='
 	fi
+	# ca_file trusts client certs (EAP-TLS). Prefer the shared bundle (bootstrap + lab CAs).
+	CA_FILE="${RUNTIME_DIR}/trusted/ca-bundle.pem"
+	if [[ ! -f "${CA_FILE}" ]]; then
+		CA_FILE="${CERT_DIR}/ca.pem"
+	fi
 	sed -i \
 		-e "s|^[[:space:]]*private_key_password = .*|${KEY_PASS_LINE}|" \
 		-e "s|^[[:space:]]*private_key_file = .*|		private_key_file = ${CERT_DIR}/server.key|" \
 		-e "s|^[[:space:]]*certificate_file = .*|		certificate_file = ${CERT_DIR}/server.pem|" \
-		-e "s|^[[:space:]]*ca_file = .*|		ca_file = ${CERT_DIR}/ca.pem|" \
+		-e "s|^[[:space:]]*ca_file = .*|		ca_file = ${CA_FILE}|" \
 		"${EAP_MOD}"
-fi
+	# Keep PEAP as default; EAP-TLS is selected by the client.
+	sed -i 's/^[[:space:]]*default_eap_type = .*/	default_eap_type = peap/' "${EAP_MOD}" || true
+}
+
+configure_eap_certs
 
 # Include control-plane rendered clients + lab Docker host client.
 if ! grep -q 'dot1x-lab/clients.dot1x.conf' "${FR_DIR}/clients.conf"; then
@@ -187,6 +214,17 @@ request_reload() {
 
 reload_watcher() {
 	while true; do
+		# Refresh shared-volume heartbeat for control-plane health checks.
+		echo "ok $(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${RUNTIME_DIR}/health.status" 2>/dev/null || true
+
+		# If the API published a new CA bundle, re-point EAP ca_file before reload.
+		if [[ -f "${RUNTIME_DIR}/trusted/updated.flag" ]]; then
+			rm -f "${RUNTIME_DIR}/trusted/updated.flag"
+			configure_eap_certs
+			# Ensure reload runs even if only trust material changed.
+			touch "${RELOAD_FLAG}"
+		fi
+
 		if [[ -f "${RELOAD_FLAG}" ]]; then
 			echo "Reload requested via ${RELOAD_FLAG}"
 			rm -f "${RELOAD_FLAG}"

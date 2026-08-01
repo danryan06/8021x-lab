@@ -1,5 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
-import { apiFetch, type Lab, type RadiusClient } from "../api/client";
+import {
+  apiFetch,
+  type FreeRadiusSyncResponse,
+  type Lab,
+  type RadiusClient,
+} from "../api/client";
 import { useMode } from "../modes/ModeContext";
 
 export function ClientsPage() {
@@ -12,6 +17,7 @@ export function ClientsPage() {
   const [secret, setSecret] = useState("testing123");
   const [deviceType, setDeviceType] = useState("switch");
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   async function refresh(selectedLab: string) {
     const data = await apiFetch<RadiusClient[]>(
@@ -35,6 +41,7 @@ export function ClientsPage() {
     e.preventDefault();
     if (!labId) return;
     setError(null);
+    setStatus(null);
     try {
       await apiFetch("/clients", {
         method: "POST",
@@ -47,9 +54,29 @@ export function ClientsPage() {
         }),
       });
       setName("");
+      setStatus(
+        "Client created — synced to clients.dot1x.conf + nas, FreeRADIUS reload requested.",
+      );
       await refresh(labId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
+    }
+  }
+
+  async function syncLab() {
+    if (!labId) return;
+    setError(null);
+    setStatus(null);
+    try {
+      const res = await apiFetch<FreeRadiusSyncResponse>(
+        `/freeradius/sync?lab_id=${labId}`,
+        { method: "POST" },
+      );
+      setStatus(
+        `FreeRADIUS sync: ${res.users_synced} users, ${res.clients_synced} clients — reload requested`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
     }
   }
 
@@ -58,29 +85,40 @@ export function ClientsPage() {
       <section>
         <h1 className="font-display text-3xl font-bold">RADIUS Clients</h1>
         <p className="mt-1 text-ink/70">
-          Network access devices (switches, WLCs, APs) that send RADIUS requests.
+          Network access devices (switches, WLCs, APs) that send RADIUS requests. Changes sync into
+          FreeRADIUS immediately.
         </p>
       </section>
 
       {error && <p className="text-fail">{error}</p>}
+      {status && <p className="text-signal">{status}</p>}
 
-      <label className="block text-sm">
-        Lab
-        <select
-          className="mt-1 block border border-black/15 bg-white px-3 py-2"
-          value={labId}
-          onChange={(e) => {
-            setLabId(e.target.value);
-            refresh(e.target.value).catch((err: Error) => setError(err.message));
-          }}
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="block text-sm">
+          Lab
+          <select
+            className="mt-1 block border border-black/15 bg-white px-3 py-2"
+            value={labId}
+            onChange={(e) => {
+              setLabId(e.target.value);
+              refresh(e.target.value).catch((err: Error) => setError(err.message));
+            }}
+          >
+            {labs.map((lab) => (
+              <option key={lab.id} value={lab.id}>
+                {lab.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={syncLab}
+          className="border border-black/15 bg-white px-3 py-2 text-sm"
         >
-          {labs.map((lab) => (
-            <option key={lab.id} value={lab.id}>
-              {lab.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          Sync to FreeRADIUS
+        </button>
+      </div>
 
       <form onSubmit={onCreate} className="grid gap-4 border border-black/10 bg-white/70 p-5 md:grid-cols-2">
         <label className="text-sm">

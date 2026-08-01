@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
   apiFetch,
+  type FreeRadiusSyncResponse,
   type Lab,
   type RadiusUser,
 } from "../api/client";
@@ -22,6 +23,7 @@ export function UsersPage() {
   const [count, setCount] = useState(10);
   const [generated, setGenerated] = useState<GenerateResponse["credentials"]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   async function refresh(selectedLab: string) {
     const data = await apiFetch<RadiusUser[]>(
@@ -45,6 +47,7 @@ export function UsersPage() {
     e.preventDefault();
     if (!labId) return;
     setError(null);
+    setStatus(null);
     try {
       await apiFetch("/users", {
         method: "POST",
@@ -57,6 +60,7 @@ export function UsersPage() {
       });
       setUsername("");
       setPassword("");
+      setStatus(`User created and synced to FreeRADIUS (radcheck NT-Password).`);
       await refresh(labId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
@@ -66,6 +70,7 @@ export function UsersPage() {
   async function onGenerate() {
     if (!labId) return;
     setError(null);
+    setStatus(null);
     try {
       const res = await apiFetch<GenerateResponse>("/users/generate", {
         method: "POST",
@@ -77,9 +82,27 @@ export function UsersPage() {
         }),
       });
       setGenerated(res.credentials);
+      setStatus(`${res.created} users generated and synced to FreeRADIUS.`);
       await refresh(labId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generate failed");
+    }
+  }
+
+  async function syncLab() {
+    if (!labId) return;
+    setError(null);
+    setStatus(null);
+    try {
+      const res = await apiFetch<FreeRadiusSyncResponse>(
+        `/freeradius/sync?lab_id=${labId}`,
+        { method: "POST" },
+      );
+      setStatus(
+        `FreeRADIUS sync: ${res.users_synced} users, ${res.clients_synced} clients — reload requested`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
     }
   }
 
@@ -88,11 +111,13 @@ export function UsersPage() {
       <section>
         <h1 className="font-display text-3xl font-bold">Users</h1>
         <p className="mt-1 text-ink/70">
-          Local RADIUS identities for PEAP labs. Passwords are stored hashed in the control plane.
+          Local RADIUS identities for PEAP labs. Create/update syncs NT-Password into FreeRADIUS
+          SQL immediately.
         </p>
       </section>
 
       {error && <p className="text-fail">{error}</p>}
+      {status && <p className="text-signal">{status}</p>}
 
       <div className="flex flex-wrap items-end gap-4">
         <label className="text-sm">
@@ -112,6 +137,13 @@ export function UsersPage() {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          onClick={syncLab}
+          className="border border-black/15 bg-white px-3 py-2 text-sm"
+        >
+          Sync to FreeRADIUS
+        </button>
       </div>
 
       <section className="grid gap-6 lg:grid-cols-2">
