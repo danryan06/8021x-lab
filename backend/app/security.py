@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from Crypto.Hash import MD4
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -21,6 +22,16 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
+
+
+def nt_hash_password(password: str) -> str:
+    """Return FreeRADIUS NT-Password value: 0x + uppercase MD4(UTF-16LE).
+
+    Required for PEAP/MSCHAPv2. Never log the returned value.
+    Uses PyCryptodome because OpenSSL 3 often disables MD4 in hashlib.
+    """
+    digest = MD4.new(password.encode("utf-16-le")).digest()
+    return "0x" + digest.hex().upper()
 
 
 def create_access_token(subject: str) -> str:

@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed backend-shell frontend-shell ps bootstrap
+.PHONY: up down logs migrate seed backend-shell frontend-shell ps bootstrap test-peap
 
 up:
 	docker compose up -d --build
@@ -30,3 +30,6 @@ bootstrap: up
 	$(MAKE) migrate
 	$(MAKE) seed
 	@echo "802.1X Lab is up: http://localhost:3000  API: http://localhost:8000/docs"
+
+test-peap:
+	./scripts/test-peap.sh

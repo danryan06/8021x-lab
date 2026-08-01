@@ -25,9 +25,10 @@ class ParsedAuthLine:
 
 def _map_method(eap_type: str) -> AuthMethod:
     value = (eap_type or "").strip().lower()
-    if "tls" in value:
+    # FreeRADIUS may emit names ("PEAP") or IANA numbers.
+    if value in {"13", "eap-tls", "tls"} or "tls" in value:
         return AuthMethod.eap_tls
-    if "peap" in value or "mschap" in value:
+    if value in {"25", "26", "mschapv2", "peap"} or "peap" in value or "mschap" in value:
         return AuthMethod.peap
     if "mab" in value:
         return AuthMethod.mab

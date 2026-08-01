@@ -1,0 +1,20 @@
+# -*- text -*-
+# Pinned auth event format for 802.1X Lab (Phase 1).
+# Parser: backend/app/integrations/freeradius/log_parse.py
+#
+# DOT1X|<iso8601>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Packet-Type>|<failure>
+
+linelog linelog_dot1x {
+	filename = /etc/freeradius/dot1x-lab/logs/auth.log
+	permissions = 0666
+	escape_filenames = no
+
+	format = ""
+	reference = "dot1x.%{%{reply:Packet-Type}:-unknown}"
+
+	dot1x {
+		Access-Accept = "DOT1X|%{%Y-%m-%dT%H:%M:%SZ}t|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|Access-Accept|"
+		Access-Reject = "DOT1X|%{%Y-%m-%dT%H:%M:%SZ}t|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|Access-Reject|%{Module-Failure-Message}"
+		unknown = "DOT1X|%{%Y-%m-%dT%H:%M:%SZ}t|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|%{reply:Packet-Type}|%{Module-Failure-Message}"
+	}
+}

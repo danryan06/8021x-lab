@@ -27,7 +27,10 @@ def health() -> HealthResponse:
         HealthComponent(
             name="freeradius_integration",
             status="configured",
-            detail=f"config_dir={settings.freeradius_config_dir}",
+            detail=(
+                f"config_dir={settings.freeradius_config_dir}; "
+                f"auth_log={settings.freeradius_auth_log_path}"
+            ),
         )
     )
     components.append(

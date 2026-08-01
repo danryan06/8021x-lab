@@ -15,32 +15,66 @@
 |---------|------|
 | `frontend` | React SPA (Vite), served via nginx in Compose |
 | `backend` | FastAPI control plane, config render, CA adapter, event ingestion |
-| `db` | PostgreSQL — app data and FreeRADIUS SQL tables (future) |
-| `freeradius` | RADIUS authentication data plane |
+| `db` | PostgreSQL — app data **and** FreeRADIUS SQL tables |
+| `freeradius` | RADIUS authentication data plane (PEAP/MSCHAPv2 in Phase 1) |
 | CA volume | Local openssl adapter data (step-ca adapter planned) |
 
 ## Control vs data plane
 
 ```text
-Operator → Frontend → Backend API → PostgreSQL
+Operator → Frontend → Backend API → PostgreSQL (control plane)
                               ↓
-                     Config render / reload
+              Sync NT-Password → radcheck / NAS → nas
+              Render clients.dot1x.conf + reload.request
                               ↓
-NAS / AP  ←——————→  FreeRADIUS  ←——→ SQL / EAP material
+NAS / AP  ←——————→  FreeRADIUS (rlm_sql + EAP/PEAP)
                               ↓
-                     linelog / detail
+                     linelog DOT1X|…
                               ↓
-                     Auth event worker → PostgreSQL → UI
+                     Auth event worker → authentication_events → UI
 ```
 
-## FreeRADIUS integration seam
+## FreeRADIUS integration (Phase 1)
 
-1. API writes identity and client records to Postgres.
-2. Backend renders FreeRADIUS fragments into a mounted runtime volume.
-3. Backend signals reload (command configurable via env).
-4. A worker parses a pinned linelog format into `authentication_events`.
+### SQL sync model
 
-Phase 0 ships interfaces, templates, and docs — not a full PEAP/EAP-TLS path.
+Control-plane tables remain authoritative:
+
+| Control plane | FreeRADIUS SQL | Sync trigger |
+|---------------|----------------|--------------|
+| `radius_users` | `radcheck` (`NT-Password`) + `radusergroup` | user create / update / delete |
+| `radius_clients` | `nas` (+ rendered `clients.dot1x.conf`) | client create / update / delete |
+
+Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL tables (`radcheck`, `radreply`, `nas`, `radacct`, …) in the same database as the app. FreeRADIUS `rlm_sql` uses dialect `postgresql` against the Compose `db` service.
+
+### Client reload mechanism
+
+1. Backend renders Jinja `clients.conf.j2` → shared volume `clients.dot1x.conf`.
+2. Backend upserts matching rows into `nas` (`read_clients = yes`).
+3. Backend writes `reload.request` on the shared volume.
+4. FreeRADIUS entrypoint watcher runs `radmin hup` (control socket) or sends `SIGHUP`.
+
+Stock `localhost` / `testing123` remains available for local PEAP tests.
+
+### Password / MSCHAPv2 strategy
+
+PEAP/MSCHAPv2 cannot use bcrypt. On user create/update the API:
+
+1. Stores a **bcrypt** hash in `radius_users.password_hash` (app-side only).
+2. Computes **NT hash** = MD4(UTF-16LE(password)), stored as FreeRADIUS `NT-Password` value `0x` + uppercase hex in `radius_users.nt_hash`.
+3. Syncs that value into `radcheck` for FreeRADIUS.
+
+NT hashes and cleartext passwords are **never** written to application logs. Cleartext is only returned once from the bulk user generator response.
+
+### Auth event ingestion
+
+FreeRADIUS module `linelog_dot1x` writes:
+
+```text
+DOT1X|<iso8601>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Access-Accept|Access-Reject>|<failure>
+```
+
+The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and inserts into `authentication_events`.
 
 ## CA integration seam
 
@@ -55,9 +89,7 @@ Adapters:
 - **openssl** (V1) — local PEM tree under `CA_DATA_DIR`
 - **step-ca** (stub) — reserved for Phase 2
 
-## Password / MSCHAPv2 note
-
-PEAP/MSCHAPv2 typically needs NT-hash (or carefully handled cleartext) in the RADIUS SQL store. Hashes must never appear in application logs. Strategy will be documented when the live RADIUS path lands (Phase 1).
+PEAP uses FreeRADIUS lab EAP server certificates generated in the FreeRADIUS image (`certs/bootstrap`). Full client PKI / EAP-TLS is Phase 2.
 
 ## Out of scope (for now)
 

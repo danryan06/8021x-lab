@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     freeradius_config_dir: str = "/var/lib/dot1x-lab/freeradius"
     freeradius_reload_command: str = 'echo "reload-requested"'
     freeradius_templates_dir: str = "/app/services/freeradius/templates"
+    freeradius_auth_log_path: str = "/var/lib/dot1x-lab/freeradius/logs/auth.log"
     ca_data_dir: str = "/var/lib/dot1x-lab/ca"
     ca_adapter: str = "openssl"
 

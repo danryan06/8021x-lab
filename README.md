@@ -25,10 +25,10 @@ See [docs/developer-setup.md](docs/developer-setup.md) for details.
 | You get | You do not get (yet / by design) |
 |---------|-----------------------------------|
 | Visual lab control plane | FreeRADIUS replacement |
-| Local users + bulk generator | Active Directory / LDAP |
-| RADIUS client management | Vendor switch/WLC generators |
-| CA + FreeRADIUS integration seams | Production-hardened PKI / NAC |
-| Auth event logging architecture | Cloud identity providers |
+| Local users + PEAP/MSCHAPv2 | Active Directory / LDAP |
+| RADIUS client sync into FreeRADIUS | Vendor switch/WLC generators |
+| Auth events from live FreeRADIUS | Production-hardened PKI / NAC |
+| CA adapter seam (EAP-TLS next) | Cloud identity providers |
 
 ## Stack
 
