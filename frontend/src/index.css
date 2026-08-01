@@ -4,19 +4,165 @@
 
 :root {
   color-scheme: light;
+  --ink: 15 23 32;
+  --mist: 232 238 242;
+  --panel: 255 255 255;
+  --panel-strong: 255 255 255;
+  --signal: 61 155 143;
+  --signal-ink: 15 23 32;
+  --warn: 217 119 6;
+  --fail: 220 38 38;
+  --header: 15 23 32;
+  --header-fg: 255 255 255;
+  --muted: 15 23 32;
+  --border: 15 23 32;
+  --glow-a: 199 230 225;
+  --glow-b: 215 227 240;
+  --shadow: 15 23 32;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: 232 238 242;
+  --mist: 11 18 24;
+  --panel: 26 36 48;
+  --panel-strong: 32 44 58;
+  --signal: 92 184 171;
+  --signal-ink: 11 18 24;
+  --warn: 245 158 11;
+  --fail: 248 113 113;
+  --header: 8 14 20;
+  --header-fg: 232 238 242;
+  --muted: 232 238 242;
+  --border: 232 238 242;
+  --glow-a: 30 70 66;
+  --glow-b: 28 48 72;
+  --shadow: 0 0 0;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   font-family: "IBM Plex Sans", Segoe UI, sans-serif;
+  color: rgb(var(--ink));
   background:
-    radial-gradient(1200px 600px at 10% -10%, #c7e6e1 0%, transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, #d7e3f0 0%, transparent 50%),
-    #e8eef2;
+    radial-gradient(1200px 600px at 10% -10%, rgb(var(--glow-a) / 0.85) 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgb(var(--glow-b) / 0.7) 0%, transparent 50%),
+    rgb(var(--mist));
+  transition: background 280ms ease, color 220ms ease;
 }
 
 code,
 .font-mono {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+@layer components {
+  .ui-panel {
+    @apply border bg-panel/80 backdrop-blur-sm;
+    border-color: rgb(var(--border) / 0.12);
+    box-shadow: 0 1px 0 rgb(var(--shadow) / 0.04), 0 10px 30px -20px rgb(var(--shadow) / 0.35);
+  }
+
+  .ui-input {
+    @apply mt-1 w-full border px-3 py-2 outline-none transition;
+    border-color: rgb(var(--border) / 0.16);
+    background: rgb(var(--panel-strong) / 0.9);
+    color: rgb(var(--ink));
+  }
+
+  .ui-input:focus {
+    border-color: rgb(var(--signal) / 0.7);
+    box-shadow: 0 0 0 3px rgb(var(--signal) / 0.18);
+  }
+
+  .ui-btn {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition;
+  }
+
+  .ui-btn-primary {
+    @apply ui-btn bg-ink text-white hover:opacity-90 disabled:opacity-50;
+  }
+
+  html[data-theme="dark"] .ui-btn-primary {
+    background: rgb(var(--panel-strong));
+    color: rgb(var(--ink));
+    border: 1px solid rgb(var(--border) / 0.16);
+  }
+
+  .ui-btn-signal {
+    @apply ui-btn bg-signal font-medium text-signal-ink hover:brightness-105 disabled:opacity-50;
+  }
+
+  .ui-btn-ghost {
+    @apply ui-btn border bg-panel/60 hover:bg-panel disabled:opacity-40;
+    border-color: rgb(var(--border) / 0.16);
+  }
+
+  .page-enter {
+    animation: page-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .step-enter {
+    animation: step-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .brand-mark {
+    position: relative;
+  }
+
+  .brand-mark::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -4px;
+    width: 2.5rem;
+    height: 2px;
+    background: rgb(var(--signal));
+    transform-origin: left;
+    animation: brand-underline 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes step-enter {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes brand-underline {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .step-enter,
+  .brand-mark::after,
+  body {
+    animation: none !important;
+    transition: none !important;
+  }
 }

@@ -8,10 +8,11 @@ import {
   type Lab,
 } from "../api/client";
 import { useMode } from "../modes/ModeContext";
+import { Button, PageHeader, Panel, StatusBanner } from "../components/ui";
 
 function statusColor(status: string): string {
   if (status === "ok") return "text-signal";
-  if (status === "configured") return "text-ink";
+  if (status === "configured") return "text-ink/80";
   if (status === "degraded") return "text-warn";
   return "text-fail";
 }
@@ -62,33 +63,31 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section>
-        <h1 className="font-display text-3xl font-bold">Dashboard</h1>
-        <p className="mt-1 text-ink/70">
-          Live lab status: database, API, FreeRADIUS, and the latest authentication event.
-        </p>
-      </section>
+    <div className="page-enter space-y-8">
+      <PageHeader
+        title="Dashboard"
+        subtitle="Live lab status: database, API, FreeRADIUS, and the latest authentication event."
+      />
 
-      {error && <p className="text-fail">{error}</p>}
-      {syncMsg && <p className="text-signal">{syncMsg}</p>}
+      {error && <StatusBanner tone="error">{error}</StatusBanner>}
+      {syncMsg && <StatusBanner tone="ok">{syncMsg}</StatusBanner>}
 
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {(health?.components || []).map((c) => (
-          <div key={c.name} className="border border-black/10 bg-white/70 p-4">
+          <div key={c.name} className="ui-panel p-4">
             <p className="text-xs uppercase tracking-wide text-ink/50">{c.name}</p>
             <p className={`mt-2 font-mono text-lg ${statusColor(c.status)}`}>{c.status}</p>
             {isAdvanced && c.detail && (
-              <p className="mt-2 break-all font-mono text-xs text-ink/60">{c.detail}</p>
+              <p className="mt-2 break-all font-mono text-xs text-ink/55">{c.detail}</p>
             )}
           </div>
         ))}
       </section>
 
-      <section className="border border-black/10 bg-white/70 p-5">
+      <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl font-semibold">Last authentication event</h2>
-          <Link className="text-sm underline" to="/events">
+          <Link className="text-sm text-signal underline-offset-2 hover:underline" to="/events">
             View all events
           </Link>
         </div>
@@ -98,7 +97,7 @@ export function DashboardPage() {
             <Link className="underline" to="/test">
               Authentication Test
             </Link>{" "}
-            page to generate one.
+            page or the Wizard to generate one.
           </p>
         ) : (
           <dl className="mt-3 grid gap-2 text-sm md:grid-cols-4">
@@ -118,7 +117,9 @@ export function DashboardPage() {
                 <span className="uppercase">{lastEvent.method}</span>{" "}
                 <span
                   className={
-                    lastEvent.result === "success" ? "text-signal font-medium" : "text-fail font-medium"
+                    lastEvent.result === "success"
+                      ? "font-medium text-signal"
+                      : "font-medium text-fail"
                   }
                 >
                   {lastEvent.result === "success" ? "Accept" : "Reject"}
@@ -134,9 +135,9 @@ export function DashboardPage() {
             </div>
           </dl>
         )}
-      </section>
+      </Panel>
 
-      <section className="border border-black/10 bg-white/70 p-5">
+      <Panel>
         <h2 className="font-display text-xl font-semibold">Labs</h2>
         {labs.length === 0 ? (
           <p className="mt-2 text-sm text-ink/60">
@@ -150,34 +151,29 @@ export function DashboardPage() {
                   <p className="font-medium">{lab.name}</p>
                   <p className="text-sm text-ink/60">{lab.description}</p>
                 </div>
-                {isAdvanced && <code className="text-xs text-ink/50">{lab.id}</code>}
+                {isAdvanced && <code className="text-xs text-ink/45">{lab.id}</code>}
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Panel>
 
       <section className="flex flex-wrap gap-3">
-        <Link className="bg-signal px-4 py-2 font-medium text-ink" to="/wizard">
-          Guided PEAP lab
+        <Link className="ui-btn-signal" to="/wizard">
+          Guided lab wizard
         </Link>
-        <Link className="border border-black/15 bg-white px-4 py-2" to="/test">
+        <Link className="ui-btn-ghost" to="/test">
           Authentication Test
         </Link>
-        <Link className="border border-black/15 bg-white px-4 py-2" to="/users">
+        <Link className="ui-btn-ghost" to="/users">
           Manage users
         </Link>
-        <Link className="border border-black/15 bg-white px-4 py-2" to="/clients">
+        <Link className="ui-btn-ghost" to="/clients">
           RADIUS clients
         </Link>
-        <button
-          type="button"
-          disabled={syncing}
-          onClick={syncAll}
-          className="border border-black/15 bg-white px-4 py-2 disabled:opacity-50"
-        >
+        <Button variant="ghost" disabled={syncing} onClick={syncAll}>
           {syncing ? "Syncing…" : "Sync to FreeRADIUS"}
-        </button>
+        </Button>
       </section>
     </div>
   );

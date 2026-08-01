@@ -114,7 +114,7 @@ export function AuthTestPage() {
   const selectedUser = users.find((u) => u.id === userId);
 
   return (
-    <div className="space-y-8">
+    <div className="page-enter space-y-8">
       <section>
         <h1 className="font-display text-3xl font-bold">Authentication Test</h1>
         <p className="mt-1 text-ink/70">
@@ -130,7 +130,7 @@ export function AuthTestPage() {
       {error && <p className="text-fail">{error}</p>}
       {caNote && <p className="text-signal">{caNote}</p>}
 
-      <section className="grid gap-4 border border-black/10 bg-white/70 p-5 md:grid-cols-2">
+      <section className="grid gap-4 ui-panel p-5 md:grid-cols-2">
         <div>
           <h2 className="font-semibold">RADIUS context</h2>
           {context ? (
@@ -180,12 +180,12 @@ export function AuthTestPage() {
         </div>
       </section>
 
-      <form onSubmit={onSubmit} className="space-y-4 border border-black/10 bg-white/70 p-5">
+      <form onSubmit={onSubmit} className="space-y-4 ui-panel p-5">
         <div className="flex flex-wrap gap-4">
           <label className="text-sm">
             Lab
             <select
-              className="mt-1 block border border-black/15 bg-white px-3 py-2"
+              className="mt-1 block ui-btn-ghost px-3 py-2"
               value={labId}
               onChange={(e) => {
                 setLabId(e.target.value);
@@ -202,7 +202,7 @@ export function AuthTestPage() {
           <label className="text-sm">
             Method
             <select
-              className="mt-1 block border border-black/15 bg-white px-3 py-2"
+              className="mt-1 block ui-btn-ghost px-3 py-2"
               value={method}
               onChange={(e) => setMethod(e.target.value as "peap" | "eap_tls")}
             >
@@ -217,7 +217,7 @@ export function AuthTestPage() {
             <label className="text-sm">
               Lab user
               <select
-                className="mt-1 block w-full border border-black/15 bg-white px-3 py-2"
+                className="mt-1 block w-full ui-btn-ghost px-3 py-2"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 required
@@ -234,7 +234,7 @@ export function AuthTestPage() {
               Password
               <input
                 type="password"
-                className="mt-1 w-full border border-black/15 px-3 py-2"
+                className="ui-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password used when creating the user"
@@ -247,7 +247,7 @@ export function AuthTestPage() {
             <label className="block text-sm">
               Certificate identity
               <input
-                className="mt-1 w-full border border-black/15 px-3 py-2"
+                className="ui-input"
                 value={certIdentity}
                 onChange={(e) => setCertIdentity(e.target.value)}
                 placeholder={selectedUser?.username || "user@lab.local"}
@@ -259,7 +259,7 @@ export function AuthTestPage() {
                 type="button"
                 disabled={busy}
                 onClick={ensureCaAndCert}
-                className="border border-black/15 bg-white px-3 py-2 text-sm"
+                className="ui-btn-ghost px-3 py-2 text-sm"
               >
                 Ensure CA + issue client cert
               </button>
@@ -272,7 +272,7 @@ export function AuthTestPage() {
                     `${certIdentity}-eap-tls.zip`,
                   ).catch((err: Error) => setError(err.message))
                 }
-                className="border border-black/15 bg-white px-3 py-2 text-sm"
+                className="ui-btn-ghost px-3 py-2 text-sm"
               >
                 Download PEM/P12 bundle
               </button>
@@ -284,7 +284,7 @@ export function AuthTestPage() {
                     (err: Error) => setError(err.message),
                   )
                 }
-                className="border border-black/15 bg-white px-3 py-2 text-sm"
+                className="ui-btn-ghost px-3 py-2 text-sm"
               >
                 Download root CA
               </button>
@@ -296,7 +296,7 @@ export function AuthTestPage() {
           <button
             type="submit"
             disabled={busy || (method === "peap" && !userId)}
-            className="bg-signal px-4 py-2 font-medium text-ink disabled:opacity-50"
+            className="ui-btn-signal disabled:opacity-50"
           >
             {busy ? "Running…" : "Run authentication test"}
           </button>
@@ -305,7 +305,7 @@ export function AuthTestPage() {
               type="button"
               disabled={busy || !userId}
               onClick={() => runTest({ wrongPassword: true })}
-              className="border border-fail/40 bg-white px-4 py-2 text-fail disabled:opacity-50"
+              className="ui-btn-ghost text-fail disabled:opacity-50"
             >
               Wrong-password test
             </button>
@@ -359,7 +359,7 @@ export function AuthTestPage() {
             </div>
           </dl>
           {isAdvanced && (
-            <pre className="mt-4 max-h-64 overflow-auto border border-black/10 bg-mist p-3 font-mono text-xs">
+            <pre className="mt-4 max-h-64 overflow-auto border border-ink/10 bg-mist/60 p-3 font-mono text-xs">
               {result.eapol_output || "(no eapol output)"}
             </pre>
           )}

@@ -30,13 +30,14 @@ Or one shot: `make bootstrap`.
 
 1. Bootstrap the stack (`make bootstrap`).
 2. Log in at http://localhost:3000.
-3. **Guided path:** open **Wizard** → choose PEAP → create/select lab → create user → create RADIUS client → run auth test → open **Events**.
-4. **Direct path:** open **Auth Test**:
-   - Select a lab user, enter the password you set at create time
-   - Click **Run authentication test** (or **Wrong-password test**)
+3. **Guided PEAP:** open **Wizard** → PEAP → create/select lab → create user → create RADIUS client → run auth test → open **Events**.
+4. **Guided EAP-TLS:** Wizard → EAP-TLS → lab → ensure root CA → issue client cert (download bundle optional) → RADIUS client → run EAP-TLS test → Events.
+5. **Direct path:** open **Auth Test**:
+   - PEAP: select a lab user, enter the password you set at create time, run test (or wrong-password)
+   - EAP-TLS: ensure CA + issue cert / download bundle, then run test
    - Confirm Accept/Reject and that an event appears under **Auth Events** (auto-refreshes)
-5. **EAP-TLS (basic):** on Auth Test, switch method to EAP-TLS → **Ensure CA + issue client cert** → download bundle if needed → **Run authentication test**.
 6. **Dashboard** shows live DB / API / FreeRADIUS health and the last auth event. Use **Sync to FreeRADIUS** after bulk changes if you want an explicit resync/reload.
+7. Toggle **Dark / Light** in the header (or on the login screen). Preference is stored in the browser.
 
 ### What syncs / reloads
 

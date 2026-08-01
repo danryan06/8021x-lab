@@ -107,7 +107,7 @@ export function UsersPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="page-enter space-y-8">
       <section>
         <h1 className="font-display text-3xl font-bold">Users</h1>
         <p className="mt-1 text-ink/70">
@@ -123,7 +123,7 @@ export function UsersPage() {
         <label className="text-sm">
           Lab
           <select
-            className="mt-1 block border border-black/15 bg-white px-3 py-2"
+            className="mt-1 block ui-btn-ghost px-3 py-2"
             value={labId}
             onChange={(e) => {
               setLabId(e.target.value);
@@ -140,19 +140,19 @@ export function UsersPage() {
         <button
           type="button"
           onClick={syncLab}
-          className="border border-black/15 bg-white px-3 py-2 text-sm"
+          className="ui-btn-ghost px-3 py-2 text-sm"
         >
           Sync to FreeRADIUS
         </button>
       </div>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={onCreate} className="border border-black/10 bg-white/70 p-5">
+        <form onSubmit={onCreate} className="ui-panel p-5">
           <h2 className="font-semibold">Create user</h2>
           <label className="mt-3 block text-sm">
             Username
             <input
-              className="mt-1 w-full border border-black/15 px-3 py-2"
+              className="ui-input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -162,18 +162,18 @@ export function UsersPage() {
             Password
             <input
               type="password"
-              className="mt-1 w-full border border-black/15 px-3 py-2"
+              className="ui-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
           </label>
-          <button type="submit" className="mt-4 bg-ink px-4 py-2 text-white">
+          <button type="submit" className="mt-4 ui-btn-primary">
             Create
           </button>
         </form>
 
-        <div className="border border-black/10 bg-white/70 p-5">
+        <div className="ui-panel p-5">
           <h2 className="font-semibold">Generate test users</h2>
           <label className="mt-3 block text-sm">
             Count
@@ -181,7 +181,7 @@ export function UsersPage() {
               type="number"
               min={1}
               max={500}
-              className="mt-1 w-32 border border-black/15 px-3 py-2"
+              className="ui-input w-32"
               value={count}
               onChange={(e) => setCount(Number(e.target.value))}
             />
@@ -189,12 +189,12 @@ export function UsersPage() {
           <button
             type="button"
             onClick={onGenerate}
-            className="mt-4 bg-signal px-4 py-2 font-medium text-ink"
+            className="mt-4 ui-btn-signal"
           >
             Generate {count} users
           </button>
           {generated.length > 0 && (
-            <div className="mt-4 max-h-48 overflow-auto border border-black/10 bg-mist p-3 font-mono text-xs">
+            <div className="mt-4 max-h-48 overflow-auto border border-ink/10 bg-mist/60 p-3 font-mono text-xs">
               {generated.map((cred) => (
                 <div key={cred.username}>
                   {cred.username} / {cred.password}
@@ -205,9 +205,9 @@ export function UsersPage() {
         </div>
       </section>
 
-      <section className="overflow-x-auto border border-black/10 bg-white/70">
+      <section className="overflow-x-auto ui-panel">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-black/10 bg-mist/80">
+          <thead className="border-b border-ink/10 bg-mist/40">
             <tr>
               <th className="px-4 py-3">Username</th>
               <th className="px-4 py-3">Groups</th>
@@ -217,7 +217,7 @@ export function UsersPage() {
           </thead>
           <tbody>
             {users.map((user) => (
-              <tr key={user.id} className="border-b border-black/5">
+              <tr key={user.id} className="border-b border-ink/5">
                 <td className="px-4 py-3 font-medium">{user.username}</td>
                 <td className="px-4 py-3">{(user.groups || []).join(", ")}</td>
                 <td className="px-4 py-3">{user.status}</td>

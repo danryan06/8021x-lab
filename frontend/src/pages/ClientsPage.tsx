@@ -81,7 +81,7 @@ export function ClientsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="page-enter space-y-8">
       <section>
         <h1 className="font-display text-3xl font-bold">RADIUS Clients</h1>
         <p className="mt-1 text-ink/70">
@@ -97,7 +97,7 @@ export function ClientsPage() {
         <label className="block text-sm">
           Lab
           <select
-            className="mt-1 block border border-black/15 bg-white px-3 py-2"
+            className="mt-1 block ui-btn-ghost px-3 py-2"
             value={labId}
             onChange={(e) => {
               setLabId(e.target.value);
@@ -114,17 +114,17 @@ export function ClientsPage() {
         <button
           type="button"
           onClick={syncLab}
-          className="border border-black/15 bg-white px-3 py-2 text-sm"
+          className="ui-btn-ghost px-3 py-2 text-sm"
         >
           Sync to FreeRADIUS
         </button>
       </div>
 
-      <form onSubmit={onCreate} className="grid gap-4 border border-black/10 bg-white/70 p-5 md:grid-cols-2">
+      <form onSubmit={onCreate} className="grid gap-4 ui-panel p-5 md:grid-cols-2">
         <label className="text-sm">
           Device name
           <input
-            className="mt-1 w-full border border-black/15 px-3 py-2"
+            className="ui-input"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -133,7 +133,7 @@ export function ClientsPage() {
         <label className="text-sm">
           IP / CIDR
           <input
-            className="mt-1 w-full border border-black/15 px-3 py-2"
+            className="ui-input"
             value={ip}
             onChange={(e) => setIp(e.target.value)}
             required
@@ -142,7 +142,7 @@ export function ClientsPage() {
         <label className="text-sm">
           Shared secret
           <input
-            className="mt-1 w-full border border-black/15 px-3 py-2 font-mono"
+            className="ui-input font-mono"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
             required
@@ -152,22 +152,22 @@ export function ClientsPage() {
           <label className="text-sm">
             Device type
             <input
-              className="mt-1 w-full border border-black/15 px-3 py-2"
+              className="ui-input"
               value={deviceType}
               onChange={(e) => setDeviceType(e.target.value)}
             />
           </label>
         )}
         <div className="md:col-span-2">
-          <button type="submit" className="bg-ink px-4 py-2 text-white">
+          <button type="submit" className="ui-btn-primary">
             Add client
           </button>
         </div>
       </form>
 
-      <section className="overflow-x-auto border border-black/10 bg-white/70">
+      <section className="overflow-x-auto ui-panel">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-black/10 bg-mist/80">
+          <thead className="border-b border-ink/10 bg-mist/40">
             <tr>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">IP</th>
@@ -177,7 +177,7 @@ export function ClientsPage() {
           </thead>
           <tbody>
             {clients.map((client) => (
-              <tr key={client.id} className="border-b border-black/5">
+              <tr key={client.id} className="border-b border-ink/5">
                 <td className="px-4 py-3 font-medium">{client.name}</td>
                 <td className="px-4 py-3 font-mono">{client.ip_address}</td>
                 <td className="px-4 py-3 font-mono">
