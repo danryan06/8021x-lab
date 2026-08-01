@@ -97,6 +97,9 @@ export type RadiusUser = {
   id: string;
   lab_id: string;
   username: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  department?: string | null;
   groups: string[];
   status: string;
   expires_at: string | null;

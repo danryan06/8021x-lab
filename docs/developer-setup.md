@@ -36,14 +36,15 @@ Or one shot: `make bootstrap`.
    - PEAP: select a lab user, enter the password you set at create time, run test (or wrong-password)
    - EAP-TLS: ensure CA + issue cert / download bundle, then run test
    - Confirm Accept/Reject and that an event appears under **Auth Events** (auto-refreshes)
-6. **Dashboard** shows live DB / API / FreeRADIUS health and the last auth event. Use **Sync to FreeRADIUS** after bulk changes if you want an explicit resync/reload.
-7. Toggle **Dark / Light** in the header (or on the login screen). Preference is stored in the browser.
+6. **Users:** create with first/last/department, generate with “select what to configure” + easy passwords (`maple482`), choose table/list/CSV credential view, or download a CSV template and import.
+7. **Dashboard** shows live DB / API / FreeRADIUS health and the last auth event. Use **Sync to FreeRADIUS** after bulk changes if you want an explicit resync/reload.
+8. Toggle **Dark / Light** in the header (or on the login screen). Preference is stored in the browser.
 
 ### What syncs / reloads
 
 | Action | FreeRADIUS effect |
 |--------|-------------------|
-| Create/update/delete user | Upsert/delete `radcheck` NT-Password (+ `radusergroup`) |
+| Create/update/delete/generate/import user | Upsert/delete `radcheck` NT-Password (+ `radusergroup`) |
 | Create/update/delete client | Rewrite `clients.dot1x.conf`, mirror `nas`, write `reload.request` → `radmin hup` |
 | Ensure lab CA / issue client cert | Publish lab CA into shared `trusted/ca-bundle.pem`, reload |
 | Auth Test (PEAP/EAP-TLS) | Backend runs `eapol_test` → FreeRADIUS → linelog → Events |

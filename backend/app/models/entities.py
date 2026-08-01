@@ -86,6 +86,9 @@ class RadiusUser(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     # FreeRADIUS NT-Password value (0x + hex). Never log this value.
     nt_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(128), nullable=True)
     groups: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, name="user_status"), nullable=False, default=UserStatus.active

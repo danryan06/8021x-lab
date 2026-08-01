@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  apiDownload,
   apiFetch,
   type FreeRadiusSyncResponse,
   type Lab,
@@ -7,23 +8,69 @@ import {
 } from "../api/client";
 import { useMode } from "../modes/ModeContext";
 
+type GeneratedCredential = {
+  username: string;
+  password: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  department?: string | null;
+  groups?: string[];
+};
+
 type GenerateResponse = {
   created: number;
   users: RadiusUser[];
-  credentials: { username: string; password: string }[];
+  credentials: GeneratedCredential[];
 };
+
+type ImportResponse = {
+  created: number;
+  skipped: number;
+  errors: string[];
+};
+
+type CredentialView = "table" | "list" | "csv";
+
+const USERNAME_STYLES = [
+  { value: "numbered", label: "user001, user002…" },
+  { value: "first_last", label: "first.last1" },
+  { value: "flast", label: "flast1 (jsmith)" },
+  { value: "emailish", label: "first.last1@lab.local" },
+] as const;
 
 export function UsersPage() {
   const { isAdvanced } = useMode();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labId, setLabId] = useState("");
   const [users, setUsers] = useState<RadiusUser[]>([]);
+  const [filter, setFilter] = useState("");
+
+  // Create form
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [department, setDepartment] = useState("");
+  const [groupsText, setGroupsText] = useState("lab");
+
+  // Generator
   const [count, setCount] = useState(10);
-  const [generated, setGenerated] = useState<GenerateResponse["credentials"]>([]);
+  const [usernameStyle, setUsernameStyle] = useState("first_last");
+  const [prefix, setPrefix] = useState("user");
+  const [includeFirstName, setIncludeFirstName] = useState(true);
+  const [includeLastName, setIncludeLastName] = useState(true);
+  const [includeDepartment, setIncludeDepartment] = useState(true);
+  const [includeGroups, setIncludeGroups] = useState(true);
+  const [genDepartment, setGenDepartment] = useState("Engineering");
+  const [genGroupsText, setGenGroupsText] = useState("students");
+  const [passwordStyle, setPasswordStyle] = useState<"easy" | "random">("easy");
+  const [passwordLength, setPasswordLength] = useState(8);
+  const [generated, setGenerated] = useState<GeneratedCredential[]>([]);
+  const [credentialView, setCredentialView] = useState<CredentialView>("table");
+
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
 
   async function refresh(selectedLab: string) {
     const data = await apiFetch<RadiusUser[]>(
@@ -43,6 +90,31 @@ export function UsersPage() {
       .catch((err: Error) => setError(err.message));
   }, []);
 
+  const filteredUsers = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const hay = [
+        u.username,
+        u.first_name,
+        u.last_name,
+        u.department,
+        ...(u.groups || []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [users, filter]);
+
+  function parseGroups(text: string): string[] {
+    return text
+      .split(/[,;]/)
+      .map((g) => g.trim())
+      .filter(Boolean);
+  }
+
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     if (!labId) return;
@@ -55,12 +127,18 @@ export function UsersPage() {
           lab_id: labId,
           username,
           password,
-          groups: ["lab"],
+          first_name: firstName || null,
+          last_name: lastName || null,
+          department: department || null,
+          groups: parseGroups(groupsText),
         }),
       });
       setUsername("");
       setPassword("");
-      setStatus(`User created and synced to FreeRADIUS (radcheck NT-Password).`);
+      setFirstName("");
+      setLastName("");
+      setDepartment("");
+      setStatus("User created and synced to FreeRADIUS (radcheck NT-Password).");
       await refresh(labId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
@@ -77,8 +155,16 @@ export function UsersPage() {
         body: JSON.stringify({
           lab_id: labId,
           count,
-          prefix: "user",
-          groups: ["students"],
+          username_style: usernameStyle,
+          prefix,
+          include_first_name: includeFirstName,
+          include_last_name: includeLastName,
+          include_department: includeDepartment,
+          include_groups: includeGroups,
+          department: includeDepartment ? genDepartment || null : null,
+          groups: includeGroups ? parseGroups(genGroupsText) : [],
+          password_style: passwordStyle,
+          password_length: passwordLength,
         }),
       });
       setGenerated(res.credentials);
@@ -106,13 +192,101 @@ export function UsersPage() {
     }
   }
 
+  async function downloadTemplate() {
+    setError(null);
+    try {
+      await apiDownload("/users/import/template", "users-import-template.csv");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Template download failed");
+    }
+  }
+
+  async function onImportFile(file: File | null) {
+    if (!file || !labId) return;
+    setImportBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const token = localStorage.getItem("dot1x_token");
+      const form = new FormData();
+      form.append("file", file);
+      const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+      const res = await fetch(`${API_BASE}/users/import?lab_id=${labId}`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const data = await res.json();
+          detail = data.detail || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(typeof detail === "string" ? detail : "Import failed");
+      }
+      const data = (await res.json()) as ImportResponse;
+      const errNote = data.errors.length ? ` (${data.errors.length} row errors)` : "";
+      setStatus(
+        `Import: ${data.created} created, ${data.skipped} skipped (already exist)${errNote}.`,
+      );
+      if (data.errors.length) {
+        setError(data.errors.slice(0, 5).join("; "));
+      }
+      await refresh(labId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  function copyCredentials() {
+    const text = generated
+      .map((c) => {
+        const name = [c.first_name, c.last_name].filter(Boolean).join(" ");
+        const dept = c.department ? ` (${c.department})` : "";
+        return `${c.username} / ${c.password}${name ? ` — ${name}${dept}` : ""}`;
+      })
+      .join("\n");
+    navigator.clipboard.writeText(text).then(
+      () => setStatus("Credentials copied to clipboard."),
+      () => setError("Could not copy to clipboard"),
+    );
+  }
+
+  function credentialsAsCsv(): string {
+    const header = "username,password,first_name,last_name,department,groups";
+    const rows = generated.map((c) =>
+      [
+        c.username,
+        c.password,
+        c.first_name || "",
+        c.last_name || "",
+        c.department || "",
+        (c.groups || []).join(";"),
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(","),
+    );
+    return [header, ...rows].join("\n");
+  }
+
+  function selectAllProfileFields(on: boolean) {
+    setIncludeFirstName(on);
+    setIncludeLastName(on);
+    setIncludeDepartment(on);
+    setIncludeGroups(on);
+  }
+
   return (
     <div className="page-enter space-y-8">
       <section>
         <h1 className="font-display text-3xl font-bold">Users</h1>
         <p className="mt-1 text-ink/70">
-          Local RADIUS identities for PEAP labs. Create/update syncs NT-Password into FreeRADIUS
-          SQL immediately.
+          Local RADIUS identities for PEAP labs. Create, generate, or import — each syncs
+          NT-Password into FreeRADIUS SQL immediately.
         </p>
       </section>
 
@@ -137,37 +311,78 @@ export function UsersPage() {
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          onClick={syncLab}
-          className="ui-btn-ghost px-3 py-2 text-sm"
-        >
+        <button type="button" onClick={syncLab} className="ui-btn-ghost px-3 py-2 text-sm">
           Sync to FreeRADIUS
         </button>
+        <label className="text-sm">
+          Search
+          <input
+            className="ui-input mt-1 w-56"
+            placeholder="name, dept, group…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </label>
       </div>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      <section className="grid gap-6 xl:grid-cols-2">
         <form onSubmit={onCreate} className="ui-panel p-5">
           <h2 className="font-semibold">Create user</h2>
-          <label className="mt-3 block text-sm">
-            Username
-            <input
-              className="ui-input"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-          </label>
-          <label className="mt-3 block text-sm">
-            Password
-            <input
-              type="password"
-              className="ui-input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              Username
+              <input
+                className="ui-input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              Password
+              <input
+                type="text"
+                className="ui-input font-mono"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="e.g. apple123"
+              />
+            </label>
+            <label className="block text-sm">
+              First name
+              <input
+                className="ui-input"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              Last name
+              <input
+                className="ui-input"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              Department
+              <input
+                className="ui-input"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              Groups
+              <input
+                className="ui-input"
+                value={groupsText}
+                onChange={(e) => setGroupsText(e.target.value)}
+                placeholder="students, staff"
+              />
+            </label>
+          </div>
           <button type="submit" className="mt-4 ui-btn-primary">
             Create
           </button>
@@ -175,33 +390,253 @@ export function UsersPage() {
 
         <div className="ui-panel p-5">
           <h2 className="font-semibold">Generate test users</h2>
-          <label className="mt-3 block text-sm">
-            Count
-            <input
-              type="number"
-              min={1}
-              max={500}
-              className="ui-input w-32"
-              value={count}
-              onChange={(e) => setCount(Number(e.target.value))}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={onGenerate}
-            className="mt-4 ui-btn-signal"
-          >
+          <p className="mt-1 text-sm text-ink/60">
+            Select what to configure, then generate demo identities with lab-friendly passwords.
+          </p>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <span className="font-medium">Select all that you want to configure</span>
+            <button
+              type="button"
+              className="ui-btn-ghost px-2 py-1 text-xs"
+              onClick={() => selectAllProfileFields(true)}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              className="ui-btn-ghost px-2 py-1 text-xs"
+              onClick={() => selectAllProfileFields(false)}
+            >
+              Clear
+            </button>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeFirstName}
+                onChange={(e) => setIncludeFirstName(e.target.checked)}
+              />
+              First name
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeLastName}
+                onChange={(e) => setIncludeLastName(e.target.checked)}
+              />
+              Last name
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeDepartment}
+                onChange={(e) => setIncludeDepartment(e.target.checked)}
+              />
+              Department
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeGroups}
+                onChange={(e) => setIncludeGroups(e.target.checked)}
+              />
+              Groups
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              Count
+              <input
+                type="number"
+                min={1}
+                max={500}
+                className="ui-input w-full"
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+              />
+            </label>
+            <label className="block text-sm">
+              Username style
+              <select
+                className="ui-input"
+                value={usernameStyle}
+                onChange={(e) => setUsernameStyle(e.target.value)}
+              >
+                {USERNAME_STYLES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {usernameStyle === "numbered" && (
+              <label className="block text-sm">
+                Prefix
+                <input
+                  className="ui-input"
+                  value={prefix}
+                  onChange={(e) => setPrefix(e.target.value)}
+                />
+              </label>
+            )}
+            {includeDepartment && (
+              <label className="block text-sm">
+                Department value
+                <input
+                  className="ui-input"
+                  value={genDepartment}
+                  onChange={(e) => setGenDepartment(e.target.value)}
+                />
+              </label>
+            )}
+            {includeGroups && (
+              <label className="block text-sm">
+                Groups value
+                <input
+                  className="ui-input"
+                  value={genGroupsText}
+                  onChange={(e) => setGenGroupsText(e.target.value)}
+                  placeholder="students"
+                />
+              </label>
+            )}
+            <label className="block text-sm">
+              Password style
+              <select
+                className="ui-input"
+                value={passwordStyle}
+                onChange={(e) => setPasswordStyle(e.target.value as "easy" | "random")}
+              >
+                <option value="easy">Easy (word + digits, e.g. maple482)</option>
+                <option value="random">Random alphanumeric</option>
+              </select>
+            </label>
+            {passwordStyle === "random" && (
+              <label className="block text-sm">
+                Password length
+                <input
+                  type="number"
+                  min={6}
+                  max={64}
+                  className="ui-input"
+                  value={passwordLength}
+                  onChange={(e) => setPasswordLength(Number(e.target.value))}
+                />
+              </label>
+            )}
+          </div>
+
+          <button type="button" onClick={onGenerate} className="mt-4 ui-btn-signal">
             Generate {count} users
           </button>
+
           {generated.length > 0 && (
-            <div className="mt-4 max-h-48 overflow-auto border border-ink/10 bg-mist/60 p-3 font-mono text-xs">
-              {generated.map((cred) => (
-                <div key={cred.username}>
-                  {cred.username} / {cred.password}
+            <div className="mt-4 space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium">How do you want to see them?</span>
+                {(
+                  [
+                    ["table", "Table"],
+                    ["list", "List"],
+                    ["csv", "CSV"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={
+                      credentialView === value
+                        ? "ui-btn-primary px-2 py-1 text-xs"
+                        : "ui-btn-ghost px-2 py-1 text-xs"
+                    }
+                    onClick={() => setCredentialView(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="ui-btn-ghost px-2 py-1 text-xs"
+                  onClick={copyCredentials}
+                >
+                  Copy
+                </button>
+              </div>
+
+              {credentialView === "table" && (
+                <div className="max-h-56 overflow-auto border border-ink/10">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-mist/80">
+                      <tr>
+                        <th className="px-2 py-1">Username</th>
+                        <th className="px-2 py-1">Password</th>
+                        <th className="px-2 py-1">Name</th>
+                        <th className="px-2 py-1">Dept</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {generated.map((cred) => (
+                        <tr key={cred.username} className="border-t border-ink/5">
+                          <td className="px-2 py-1 font-mono">{cred.username}</td>
+                          <td className="px-2 py-1 font-mono">{cred.password}</td>
+                          <td className="px-2 py-1">
+                            {[cred.first_name, cred.last_name].filter(Boolean).join(" ") || "—"}
+                          </td>
+                          <td className="px-2 py-1">{cred.department || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
+              )}
+              {credentialView === "list" && (
+                <div className="max-h-56 overflow-auto border border-ink/10 bg-mist/60 p-3 font-mono text-xs">
+                  {generated.map((cred) => (
+                    <div key={cred.username}>
+                      {cred.username} / {cred.password}
+                      {(cred.first_name || cred.last_name) &&
+                        ` — ${[cred.first_name, cred.last_name].filter(Boolean).join(" ")}`}
+                      {cred.department && ` (${cred.department})`}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {credentialView === "csv" && (
+                <pre className="max-h-56 overflow-auto border border-ink/10 bg-mist/60 p-3 font-mono text-xs whitespace-pre-wrap">
+                  {credentialsAsCsv()}
+                </pre>
+              )}
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="ui-panel p-5">
+        <h2 className="font-semibold">Import from CSV</h2>
+        <p className="mt-1 text-sm text-ink/60">
+          Download a template, fill in users, then upload. Existing usernames are skipped.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button type="button" className="ui-btn-ghost px-3 py-2 text-sm" onClick={downloadTemplate}>
+            Download template
+          </button>
+          <label className="ui-btn-primary cursor-pointer px-3 py-2 text-sm">
+            {importBusy ? "Importing…" : "Upload CSV"}
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              disabled={importBusy || !labId}
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                void onImportFile(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
         </div>
       </section>
 
@@ -210,22 +645,35 @@ export function UsersPage() {
           <thead className="border-b border-ink/10 bg-mist/40">
             <tr>
               <th className="px-4 py-3">Username</th>
+              <th className="px-4 py-3">First name</th>
+              <th className="px-4 py-3">Last name</th>
+              <th className="px-4 py-3">Department</th>
               <th className="px-4 py-3">Groups</th>
               <th className="px-4 py-3">Status</th>
               {isAdvanced && <th className="px-4 py-3">ID</th>}
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <tr key={user.id} className="border-b border-ink/5">
                 <td className="px-4 py-3 font-medium">{user.username}</td>
-                <td className="px-4 py-3">{(user.groups || []).join(", ")}</td>
+                <td className="px-4 py-3">{user.first_name || "—"}</td>
+                <td className="px-4 py-3">{user.last_name || "—"}</td>
+                <td className="px-4 py-3">{user.department || "—"}</td>
+                <td className="px-4 py-3">{(user.groups || []).join(", ") || "—"}</td>
                 <td className="px-4 py-3">{user.status}</td>
                 {isAdvanced && (
                   <td className="px-4 py-3 font-mono text-xs text-ink/50">{user.id}</td>
                 )}
               </tr>
             ))}
+            {filteredUsers.length === 0 && (
+              <tr>
+                <td className="px-4 py-6 text-ink/50" colSpan={isAdvanced ? 7 : 6}>
+                  No users yet — create, generate, or import to get started.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </section>
