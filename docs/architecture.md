@@ -43,14 +43,14 @@ Control-plane tables remain authoritative:
 | Control plane | FreeRADIUS SQL | Sync trigger |
 |---------------|----------------|--------------|
 | `radius_users` | `radcheck` (`NT-Password`) + `radusergroup` | user create / update / delete |
-| `radius_clients` | `nas` (+ rendered `clients.dot1x.conf`) | client create / update / delete |
+| `radius_clients` | rendered `clients.dot1x.conf` (+ `nas` mirror) | client create / update / delete |
 
-Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL tables (`radcheck`, `radreply`, `nas`, `radacct`, …) in the same database as the app. FreeRADIUS `rlm_sql` uses dialect `postgresql` against the Compose `db` service.
+Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL tables (`radcheck`, `radreply`, `nas`, `radacct`, …) in the same database as the app. FreeRADIUS `rlm_sql` uses dialect `postgresql` against the Compose `db` service. Users authenticate from `radcheck`. NAS rows are mirrored into `nas` for inspection, but `read_clients = no` so FreeRADIUS loads clients only from the rendered file (avoids duplicate-IP conflicts).
 
 ### Client reload mechanism
 
 1. Backend renders Jinja `clients.conf.j2` → shared volume `clients.dot1x.conf`.
-2. Backend upserts matching rows into `nas` (`read_clients = yes`).
+2. Backend upserts matching rows into `nas` (mirror / ops visibility).
 3. Backend writes `reload.request` on the shared volume.
 4. FreeRADIUS entrypoint watcher runs `radmin hup` (control socket) or sends `SIGHUP`.
 
@@ -71,10 +71,12 @@ NT hashes and cleartext passwords are **never** written to application logs. Cle
 FreeRADIUS module `linelog_dot1x` writes:
 
 ```text
-DOT1X|<iso8601>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Access-Accept|Access-Reject>|<failure>
+DOT1X|<unix-epoch>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Access-Accept|Access-Reject>|<failure>
 ```
 
-The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and inserts into `authentication_events`.
+(`%l` epoch timestamps avoid brittle FreeRADIUS strftime xlats in linelog format strings.)
+
+The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and inserts into `authentication_events`. A stock `lab-docker-host` client (`172.16.0.0/12`, secret `testing123`) accepts RADIUS from Compose published ports on the Docker host.
 
 ## CA integration seam
 

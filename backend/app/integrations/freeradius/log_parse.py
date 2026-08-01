@@ -1,7 +1,7 @@
 """Parse FreeRADIUS linelog lines into authentication event fields.
 
-Pinned format (Phase 1 will configure FreeRADIUS to emit this):
-  DOT1X|%{timestamp}|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|%{reply:Packet-Type}|%{Module-Failure-Message}
+Pinned format:
+  DOT1X|%l|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|%{reply:Packet-Type}|%{Module-Failure-Message}
 """
 
 from __future__ import annotations
@@ -46,7 +46,14 @@ def parse_linelog_line(line: str) -> ParsedAuthLine | None:
     _, ts, identity, nas_ip, eap_type, packet_type, failure = parts[:7]
     success = "Access-Accept" in packet_type
     try:
-        timestamp = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        # Prefer unix epoch (%l); also accept ISO-8601 / "YYYY-mm-dd HH:MM:SS".
+        if ts.strip().isdigit():
+            timestamp = datetime.fromtimestamp(int(ts.strip()), tz=UTC)
+        else:
+            normalized = ts.strip().replace("Z", "+00:00").replace(" ", "T", 1)
+            timestamp = datetime.fromisoformat(normalized)
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
     except ValueError:
         timestamp = datetime.now(UTC)
 

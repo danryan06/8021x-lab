@@ -47,7 +47,9 @@ sql {
 	usergroup_table = "radusergroup"
 	client_table = "nas"
 
-	read_clients = yes
+	# Clients are loaded from rendered clients.dot1x.conf (not SQL) to avoid
+	# duplicate IP conflicts with the nas mirror table.
+	read_clients = no
 
 	group_attribute = "SQL-Group"
 
@@ -83,26 +85,31 @@ for i in $(seq 1 60); do
 	sleep 1
 done
 
-# Ensure EAP lab certs exist (snakeoil works, but dedicated certs are clearer for PEAP).
+# Ensure EAP lab certs exist for PEAP server certificate presentation.
 CERT_DIR="${FR_DIR}/certs"
-if [[ ! -f "${CERT_DIR}/server.pem" ]]; then
-	echo "Generating FreeRADIUS EAP lab certificates..."
-	if [[ -x "${CERT_DIR}/bootstrap" ]]; then
-		(cd "${CERT_DIR}" && ./bootstrap) || true
-	fi
-fi
+echo "Ensuring FreeRADIUS EAP lab certificates..."
+bash /usr/local/bin/generate-eap-certs.sh "${CERT_DIR}" || true
+# freerad must be able to read EAP material after privilege drop.
+chown -R freerad:freerad "${CERT_DIR}" 2>/dev/null || true
+chmod 640 "${CERT_DIR}"/*.key 2>/dev/null || true
+chmod 644 "${CERT_DIR}"/*.pem "${CERT_DIR}"/*.crt 2>/dev/null || true
 if [[ -f "${CERT_DIR}/server.pem" && -f "${CERT_DIR}/server.key" && -f "${CERT_DIR}/ca.pem" ]]; then
-	# Point EAP TLS common config at generated lab certs when present.
 	EAP_MOD="${FR_DIR}/mods-available/eap"
+	# Bootstrap keys use passphrase "whatever"; our openssl fallback is unencrypted.
+	if grep -q "ENCRYPTED" "${CERT_DIR}/server.key" 2>/dev/null; then
+		KEY_PASS_LINE='		private_key_password = whatever'
+	else
+		KEY_PASS_LINE='		private_key_password ='
+	fi
 	sed -i \
-		-e 's|^[[:space:]]*private_key_password = .*|		private_key_password = whatever|' \
+		-e "s|^[[:space:]]*private_key_password = .*|${KEY_PASS_LINE}|" \
 		-e "s|^[[:space:]]*private_key_file = .*|		private_key_file = ${CERT_DIR}/server.key|" \
 		-e "s|^[[:space:]]*certificate_file = .*|		certificate_file = ${CERT_DIR}/server.pem|" \
 		-e "s|^[[:space:]]*ca_file = .*|		ca_file = ${CERT_DIR}/ca.pem|" \
 		"${EAP_MOD}"
 fi
 
-# Include control-plane rendered clients.
+# Include control-plane rendered clients + lab Docker host client.
 if ! grep -q 'dot1x-lab/clients.dot1x.conf' "${FR_DIR}/clients.conf"; then
 	cat >>"${FR_DIR}/clients.conf" <<'EOF'
 
@@ -111,7 +118,32 @@ $INCLUDE /etc/freeradius/dot1x-lab/clients.dot1x.conf
 EOF
 fi
 
-# Enable control socket for radmin reload.
+# Published host ports appear as the Compose bridge gateway (often 172.18.0.1).
+# Allow that path for local eapol_test / radtest from the Docker host.
+if ! grep -q 'client lab-docker-host' "${FR_DIR}/clients.conf"; then
+	cat >>"${FR_DIR}/clients.conf" <<'EOF'
+
+# 802.1X Lab — Docker published-port source ranges (lab only)
+client lab-docker-host {
+	ipaddr = 172.16.0.0/12
+	secret = testing123
+}
+client lab-docker-host-192 {
+	ipaddr = 192.168.0.0/16
+	secret = testing123
+}
+EOF
+fi
+
+# Enable control socket for radmin reload (needs mode=rw for hup).
+CONTROL_SITE="${FR_DIR}/sites-available/control-socket"
+if ! grep -q '^[[:space:]]*mode = rw' "${CONTROL_SITE}"; then
+	# Uncomment / set mode = rw so radmin can issue hup.
+	sed -i 's/^#[[:space:]]*mode = rw/	mode = rw/' "${CONTROL_SITE}"
+	if ! grep -q '^[[:space:]]*mode = rw' "${CONTROL_SITE}"; then
+		sed -i '/type = control/a\	mode = rw' "${CONTROL_SITE}"
+	fi
+fi
 ln -sfn ../sites-available/control-socket "${FR_DIR}/sites-enabled/control-socket"
 
 # Install linelog module for pinned DOT1X auth events.
@@ -123,10 +155,10 @@ ln -sfn ../mods-available/linelog_dot1x "${FR_DIR}/mods-enabled/linelog_dot1x"
 ensure_linelog() {
 	local site="$1"
 	if ! grep -q 'linelog_dot1x' "${site}"; then
-		# Insert into post-auth and Post-Auth-Type REJECT blocks.
+		# Soft-optional (-prefix) so a linelog glitch cannot convert Accept → Reject.
 		sed -i \
-			-e '/^post-auth {/a\	linelog_dot1x' \
-			-e '/Post-Auth-Type REJECT {/a\		linelog_dot1x' \
+			-e '/^post-auth {/a\	-linelog_dot1x' \
+			-e '/Post-Auth-Type REJECT {/a\		-linelog_dot1x' \
 			"${site}"
 	fi
 }
@@ -135,16 +167,20 @@ ensure_linelog "${FR_DIR}/sites-enabled/inner-tunnel"
 
 # Soft-fail SQL is already "-sql" in Debian sites; nothing else required for authorize.
 
+CONTROL_SOCK="/var/run/freeradius/freeradius.sock"
+
 request_reload() {
-	if [[ -S /var/run/freeradius/freeradius.sock ]]; then
-		radmin -f /var/run/freeradius/freeradius.sock -e hup && return 0
+	# Prefer radmin over raw SIGHUP — more reliable with -f / job-control wrappers.
+	if [[ -S "${CONTROL_SOCK}" ]]; then
+		if radmin -f "${CONTROL_SOCK}" -e "hup"; then
+			return 0
+		fi
 	fi
-	if [[ -f "${PID_FILE}" ]]; then
-		kill -HUP "$(cat "${PID_FILE}")" 2>/dev/null && return 0
-	fi
-	# Fallback: signal the freeradius child we started.
 	if [[ -n "${FR_PID:-}" ]] && kill -0 "${FR_PID}" 2>/dev/null; then
-		kill -HUP "${FR_PID}" 2>/dev/null && return 0
+		kill -HUP "${FR_PID}" 2>/dev/null || return 1
+		sleep 1
+		kill -0 "${FR_PID}" 2>/dev/null
+		return $?
 	fi
 	return 1
 }
@@ -153,30 +189,66 @@ reload_watcher() {
 	while true; do
 		if [[ -f "${RELOAD_FLAG}" ]]; then
 			echo "Reload requested via ${RELOAD_FLAG}"
+			rm -f "${RELOAD_FLAG}"
 			if request_reload; then
 				echo "FreeRADIUS reload completed"
 			else
 				echo "WARNING: FreeRADIUS reload failed" >&2
 			fi
-			rm -f "${RELOAD_FLAG}"
 		fi
 		sleep 1
 	done
 }
 
-# Start FreeRADIUS in background so we can watch for reload flags.
-# -f foreground relative to the daemonized child; we manage the process.
-freeradius -f -l stdout &
-FR_PID=$!
-echo "${FR_PID}" >"${PID_FILE}"
+start_freeradius() {
+	# Discard stale reload flags from previous runs so we do not HUP during boot.
+	rm -f "${RELOAD_FLAG}"
+	# Keep freeradius as a real child (do not disown) so `wait` works and EXIT
+	# cleanup does not race with a detached process.
+	freeradius -f -l stdout &
+	FR_PID=$!
+	echo "${FR_PID}" >"${PID_FILE}"
+
+	# Wait for control socket (or process death) before enabling reload watcher.
+	for _ in $(seq 1 30); do
+		if [[ -S "${CONTROL_SOCK}" ]]; then
+			echo "FreeRADIUS control socket is ready"
+			return 0
+		fi
+		if ! kill -0 "${FR_PID}" 2>/dev/null; then
+			echo "ERROR: FreeRADIUS exited during startup" >&2
+			wait "${FR_PID}" || true
+			return 1
+		fi
+		sleep 1
+	done
+	echo "WARNING: control socket not ready; reload watcher will use SIGHUP fallback" >&2
+	return 0
+}
+
+start_freeradius
 
 reload_watcher &
 WATCHER_PID=$!
 
+STOPPING=0
 cleanup() {
+	STOPPING=1
 	kill "${WATCHER_PID}" 2>/dev/null || true
-	kill "${FR_PID}" 2>/dev/null || true
+	if [[ -n "${FR_PID:-}" ]] && kill -0 "${FR_PID}" 2>/dev/null; then
+		kill "${FR_PID}" 2>/dev/null || true
+		wait "${FR_PID}" 2>/dev/null || true
+	fi
 }
 trap cleanup EXIT INT TERM
 
+# If FreeRADIUS exits on its own, end the container so Compose can restart it.
 wait "${FR_PID}"
+status=$?
+if [[ "${STOPPING}" -eq 0 ]]; then
+	echo "FreeRADIUS exited with status ${status}" >&2
+fi
+# Disable cleanup kill on normal wait completion (already dead).
+trap - EXIT
+kill "${WATCHER_PID}" 2>/dev/null || true
+exit "${status}"
