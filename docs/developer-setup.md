@@ -12,11 +12,16 @@
 cp .env.example .env
 make up
 make migrate
+make seed
 ```
 
-- UI: http://localhost:3000
-- API docs: http://localhost:8000/docs
+Or one shot: `make bootstrap`.
+
+- UI: http://localhost:3000 (nginx proxies `/api` to the backend)
+- API docs: http://localhost:8000/docs (also available via http://localhost:3000/docs)
 - Default admin: values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
+
+FreeRADIUS runs from a Debian package image (`services/freeradius`) with stock config in Phase 0.
 
 ## Common commands
 

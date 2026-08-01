@@ -19,6 +19,28 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Create ENUM types once. Column definitions below use create_type=False so
+    # create_table does not attempt a second CREATE TYPE (Postgres DuplicateObject).
+    user_status = postgresql.ENUM(
+        "active", "disabled", "expired", name="user_status", create_type=False
+    )
+    cert_type = postgresql.ENUM(
+        "root_ca", "intermediate_ca", "client", "server", name="cert_type", create_type=False
+    )
+    cert_status = postgresql.ENUM(
+        "pending", "active", "revoked", "expired", name="cert_status", create_type=False
+    )
+    auth_method = postgresql.ENUM(
+        "peap", "eap_tls", "mab", "unknown", name="auth_method", create_type=False
+    )
+    auth_result = postgresql.ENUM(
+        "success", "failure", "challenge", name="auth_result", create_type=False
+    )
+
+    bind = op.get_bind()
+    for enum in (user_status, cert_type, cert_status, auth_method, auth_result):
+        enum.create(bind, checkfirst=True)
+
     op.create_table(
         "labs",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -28,17 +50,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
     )
-
-    user_status = sa.Enum("active", "disabled", "expired", name="user_status")
-    cert_type = sa.Enum("root_ca", "intermediate_ca", "client", "server", name="cert_type")
-    cert_status = sa.Enum("pending", "active", "revoked", "expired", name="cert_status")
-    auth_method = sa.Enum("peap", "eap_tls", "mab", "unknown", name="auth_method")
-    auth_result = sa.Enum("success", "failure", "challenge", name="auth_result")
-    user_status.create(op.get_bind(), checkfirst=True)
-    cert_type.create(op.get_bind(), checkfirst=True)
-    cert_status.create(op.get_bind(), checkfirst=True)
-    auth_method.create(op.get_bind(), checkfirst=True)
-    auth_result.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "authz_policies",
@@ -172,8 +183,7 @@ def downgrade() -> None:
     op.drop_table("auth_policies")
     op.drop_table("authz_policies")
     op.drop_table("labs")
-    sa.Enum(name="auth_result").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="auth_method").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="cert_status").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="cert_type").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="user_status").drop(op.get_bind(), checkfirst=True)
+
+    bind = op.get_bind()
+    for name in ("auth_result", "auth_method", "cert_status", "cert_type", "user_status"):
+        postgresql.ENUM(name=name, create_type=False).drop(bind, checkfirst=True)

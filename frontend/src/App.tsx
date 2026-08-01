@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./api/AuthContext";
 import { Layout } from "./components/Layout";
@@ -8,7 +9,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { UsersPage } from "./pages/UsersPage";
 import { WizardPage } from "./pages/WizardPage";
 
-function Protected({ children }: { children: React.ReactNode }) {
+function Protected({ children }: { children: ReactNode }) {
   const { token } = useAuth();
   if (!token) return <Navigate to="/login" replace />;
   return children;

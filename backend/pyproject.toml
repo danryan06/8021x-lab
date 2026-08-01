@@ -13,8 +13,9 @@ dependencies = [
   "pydantic>=2.10.0",
   "pydantic-settings>=2.6.0",
   "python-jose[cryptography]>=3.3.0",
-  "passlib[bcrypt]>=1.7.4",
-  "bcrypt>=4.0.1,<4.1",
+  "passlib[bcrypt]==1.7.4",
+  # bcrypt>=4.1 breaks passlib's wrap-bug detection; pin to 4.0.x for Phase 0.
+  "bcrypt==4.0.1",
   "python-multipart>=0.0.17",
   "jinja2>=3.1.4",
   "httpx>=0.28.0",
