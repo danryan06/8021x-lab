@@ -7,6 +7,7 @@ RUNTIME_DIR="${RUNTIME_DIR:-/etc/freeradius/dot1x-lab}"
 LOG_DIR="${RUNTIME_DIR}/logs"
 CLIENTS_FILE="${RUNTIME_DIR}/clients.dot1x.conf"
 RELOAD_FLAG="${RUNTIME_DIR}/reload.request"
+RESTART_FLAG="${RUNTIME_DIR}/restart.request"
 PID_FILE="${PID_FILE:-/var/run/freeradius/freeradius.pid}"
 
 mkdir -p "${RUNTIME_DIR}" "${LOG_DIR}" "${RUNTIME_DIR}/certs" "${RUNTIME_DIR}/trusted" /var/run/freeradius
@@ -212,17 +213,66 @@ request_reload() {
 	return 1
 }
 
-reload_watcher() {
-	while true; do
-		# Refresh shared-volume heartbeat for control-plane health checks.
+start_freeradius() {
+	# Discard stale reload/restart flags from previous runs during boot.
+	rm -f "${RELOAD_FLAG}" "${RESTART_FLAG}"
+	# Keep freeradius as a real child (do not disown) so `wait` works and EXIT
+	# cleanup does not race with a detached process.
+	freeradius -f -l stdout &
+	FR_PID=$!
+	echo "${FR_PID}" >"${PID_FILE}"
+
+	# Wait for control socket (or process death) before returning.
+	for _ in $(seq 1 30); do
+		if [[ -S "${CONTROL_SOCK}" ]]; then
+			echo "FreeRADIUS control socket is ready"
+			return 0
+		fi
+		if ! kill -0 "${FR_PID}" 2>/dev/null; then
+			echo "ERROR: FreeRADIUS exited during startup" >&2
+			wait "${FR_PID}" || true
+			return 1
+		fi
+		sleep 1
+	done
+	echo "WARNING: control socket not ready; reload will use SIGHUP fallback" >&2
+	return 0
+}
+
+STOPPING=0
+cleanup() {
+	STOPPING=1
+	if [[ -n "${FR_PID:-}" ]] && kill -0 "${FR_PID}" 2>/dev/null; then
+		kill "${FR_PID}" 2>/dev/null || true
+		wait "${FR_PID}" 2>/dev/null || true
+	fi
+}
+trap cleanup EXIT INT TERM
+
+# Supervise FreeRADIUS in-process so ca_file trust updates can restart without
+# exiting the container (HUP alone does not reliably reload OpenSSL trust stores).
+while [[ "${STOPPING}" -eq 0 ]]; do
+	if ! start_freeradius; then
+		echo "ERROR: FreeRADIUS failed to start" >&2
+		exit 1
+	fi
+
+	CONTROLLED_RESTART=0
+	while [[ "${STOPPING}" -eq 0 ]] && kill -0 "${FR_PID}" 2>/dev/null; do
 		echo "ok $(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${RUNTIME_DIR}/health.status" 2>/dev/null || true
 
-		# If the API published a new CA bundle, re-point EAP ca_file before reload.
 		if [[ -f "${RUNTIME_DIR}/trusted/updated.flag" ]]; then
 			rm -f "${RUNTIME_DIR}/trusted/updated.flag"
 			configure_eap_certs
-			# Ensure reload runs even if only trust material changed.
-			touch "${RELOAD_FLAG}"
+		fi
+
+		if [[ -f "${RESTART_FLAG}" ]]; then
+			echo "Restart requested via ${RESTART_FLAG}"
+			rm -f "${RESTART_FLAG}" "${RELOAD_FLAG}"
+			configure_eap_certs
+			CONTROLLED_RESTART=1
+			kill "${FR_PID}" 2>/dev/null || true
+			break
 		fi
 
 		if [[ -f "${RELOAD_FLAG}" ]]; then
@@ -236,57 +286,22 @@ reload_watcher() {
 		fi
 		sleep 1
 	done
-}
 
-start_freeradius() {
-	# Discard stale reload flags from previous runs so we do not HUP during boot.
-	rm -f "${RELOAD_FLAG}"
-	# Keep freeradius as a real child (do not disown) so `wait` works and EXIT
-	# cleanup does not race with a detached process.
-	freeradius -f -l stdout &
-	FR_PID=$!
-	echo "${FR_PID}" >"${PID_FILE}"
+	wait "${FR_PID}" 2>/dev/null || true
+	status=$?
 
-	# Wait for control socket (or process death) before enabling reload watcher.
-	for _ in $(seq 1 30); do
-		if [[ -S "${CONTROL_SOCK}" ]]; then
-			echo "FreeRADIUS control socket is ready"
-			return 0
-		fi
-		if ! kill -0 "${FR_PID}" 2>/dev/null; then
-			echo "ERROR: FreeRADIUS exited during startup" >&2
-			wait "${FR_PID}" || true
-			return 1
-		fi
-		sleep 1
-	done
-	echo "WARNING: control socket not ready; reload watcher will use SIGHUP fallback" >&2
-	return 0
-}
-
-start_freeradius
-
-reload_watcher &
-WATCHER_PID=$!
-
-STOPPING=0
-cleanup() {
-	STOPPING=1
-	kill "${WATCHER_PID}" 2>/dev/null || true
-	if [[ -n "${FR_PID:-}" ]] && kill -0 "${FR_PID}" 2>/dev/null; then
-		kill "${FR_PID}" 2>/dev/null || true
-		wait "${FR_PID}" 2>/dev/null || true
+	if [[ "${STOPPING}" -ne 0 ]]; then
+		break
 	fi
-}
-trap cleanup EXIT INT TERM
+	if [[ "${CONTROLLED_RESTART}" -eq 1 ]]; then
+		echo "FreeRADIUS restarting to apply config/trust updates..."
+		continue
+	fi
 
-# If FreeRADIUS exits on its own, end the container so Compose can restart it.
-wait "${FR_PID}"
-status=$?
-if [[ "${STOPPING}" -eq 0 ]]; then
-	echo "FreeRADIUS exited with status ${status}" >&2
-fi
-# Disable cleanup kill on normal wait completion (already dead).
+	echo "FreeRADIUS exited unexpectedly with status ${status}" >&2
+	trap - EXIT
+	exit "${status}"
+done
+
 trap - EXIT
-kill "${WATCHER_PID}" 2>/dev/null || true
-exit "${status}"
+exit 0

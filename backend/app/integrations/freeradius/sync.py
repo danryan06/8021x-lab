@@ -81,6 +81,18 @@ def request_reload() -> None:
             logger.exception("FreeRADIUS reload command failed")
 
 
+def request_restart() -> None:
+    """Ask the FreeRADIUS container to fully restart (needed for ca_file trust updates)."""
+    runtime = Path(settings.freeradius_config_dir)
+    runtime.mkdir(parents=True, exist_ok=True)
+    flag = runtime / "restart.request"
+    try:
+        flag.write_text("restart\n", encoding="utf-8")
+        logger.info("FreeRADIUS restart requested via %s", flag)
+    except Exception:
+        logger.exception("Failed to write FreeRADIUS restart flag")
+
+
 def sync_radius_clients(db: Session, lab_id: UUID) -> Path:
     clients = list(
         db.scalars(

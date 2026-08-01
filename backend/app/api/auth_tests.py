@@ -16,7 +16,7 @@ from app.api.deps import get_current_admin
 from app.config import get_settings
 from app.db import get_db
 from app.integrations.ca import get_ca_adapter
-from app.integrations.freeradius.eapol import run_eap_tls_test, run_peap_test
+from app.integrations.freeradius.eapol import resolve_radius_host, run_eap_tls_test, run_peap_test
 from app.integrations.freeradius.tls_trust import publish_lab_ca
 from app.models.entities import AuthenticationEvent, AuthMethod, RadiusUser, UserStatus
 from app.schemas.entities import AuthEventRead
@@ -62,8 +62,13 @@ class AuthTestResponse(BaseModel):
 def auth_test_context(_admin=Depends(get_current_admin)) -> AuthTestContext:
     secret = settings.freeradius_lab_secret
     hint = f"{secret[:2]}…{secret[-2:]}" if len(secret) > 4 else "****"
+    try:
+        resolved = resolve_radius_host(settings.freeradius_host)
+        host_display = f"{settings.freeradius_host} ({resolved})"
+    except ValueError:
+        host_display = settings.freeradius_host
     return AuthTestContext(
-        radius_host=settings.freeradius_host,
+        radius_host=host_display,
         radius_port=settings.freeradius_auth_port,
         shared_secret_hint=f"{hint} (compose lab-docker-host)",
         note=(
@@ -120,9 +125,9 @@ def run_auth_test(
                     status_code=500, detail=f"Failed to issue client certificate: {exc}"
                 ) from exc
         # Publish lab CA into FreeRADIUS trust store before testing.
-        from app.integrations.freeradius.tls_trust import publish_lab_ca
-
         publish_lab_ca(payload.lab_id)
+        # Wait for FreeRADIUS restart (ca_file trust updates need a full restart).
+        time.sleep(6.0)
         try:
             eapol = run_eap_tls_test(identity, cert_path, key_path)
         except FileNotFoundError as exc:

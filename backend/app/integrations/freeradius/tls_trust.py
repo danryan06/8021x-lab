@@ -8,7 +8,7 @@ from uuid import UUID
 
 from app.config import get_settings
 from app.integrations.ca import get_ca_adapter
-from app.integrations.freeradius.sync import request_reload
+from app.integrations.freeradius.sync import request_restart
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -42,8 +42,8 @@ def publish_lab_ca(lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> Pat
     bundle_path = trusted_dir() / "ca-bundle.pem"
     bundle_path.write_text("\n".join(p for p in bundle_parts if p) + "\n", encoding="utf-8")
 
-    # Flag for entrypoint / operator visibility; request reload so TLS trust updates.
+    # Flag for entrypoint / operator visibility; ca_file changes need a full restart.
     (trusted_dir() / "updated.flag").write_text("updated\n", encoding="utf-8")
-    request_reload()
-    logger.info("Published lab CA for lab_id=%s to %s", lab_id, bundle_path)
+    request_restart()
+    logger.info("Published lab CA for lab_id=%s to %s (restart requested)", lab_id, bundle_path)
     return bundle_path

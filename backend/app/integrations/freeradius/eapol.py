@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -14,6 +15,25 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def resolve_radius_host(host: str) -> str:
+    """eapol_test requires a numeric IPv4 address (hostnames assert/fail)."""
+    host = (host or "").strip()
+    if not host:
+        raise ValueError("RADIUS host is empty")
+    try:
+        socket.inet_pton(socket.AF_INET, host)
+        return host
+    except OSError:
+        pass
+    try:
+        infos = socket.getaddrinfo(host, None, family=socket.AF_INET, type=socket.SOCK_DGRAM)
+    except socket.gaierror as exc:
+        raise ValueError(f"Cannot resolve RADIUS host {host!r}: {exc}") from exc
+    if not infos:
+        raise ValueError(f"No IPv4 address for RADIUS host {host!r}")
+    return infos[0][4][0]
 
 
 @dataclass
@@ -57,7 +77,7 @@ def run_peap_test(
     shared_secret: str | None = None,
     timeout_seconds: int = 30,
 ) -> EapolResult:
-    host = radius_host or settings.freeradius_host
+    host = resolve_radius_host(radius_host or settings.freeradius_host)
     port = radius_port or settings.freeradius_auth_port
     secret = shared_secret or settings.freeradius_lab_secret
     ca_pem = _ca_pem_path()
@@ -106,7 +126,7 @@ def run_eap_tls_test(
     shared_secret: str | None = None,
     timeout_seconds: int = 45,
 ) -> EapolResult:
-    host = radius_host or settings.freeradius_host
+    host = resolve_radius_host(radius_host or settings.freeradius_host)
     port = radius_port or settings.freeradius_auth_port
     secret = shared_secret or settings.freeradius_lab_secret
     ca_pem = _ca_pem_path()
@@ -232,8 +252,27 @@ def _secret_hint(secret: str) -> str:
     return f"{secret[:2]}…{secret[-2:]} (lab compose secret)"
 
 
+def _redact_secrets(output: str) -> str:
+    """Strip password material from eapol_test debug dumps before returning to UI/API."""
+    lines = output.splitlines()
+    redacted: list[str] = []
+    skip_hex = 0
+    for line in lines:
+        lower = line.lower()
+        if "password - hexdump" in lower or lower.strip().startswith("password -"):
+            redacted.append("password - hexdump_ascii: [REDACTED]")
+            skip_hex = 2
+            continue
+        if skip_hex > 0 and (line.startswith("     ") or line.startswith("\t")):
+            skip_hex -= 1
+            continue
+        skip_hex = 0
+        redacted.append(line)
+    return "\n".join(redacted)
+
+
 def _trim_output(output: str, limit: int = 4000) -> str:
-    text = output.strip()
+    text = _redact_secrets(output).strip()
     if len(text) <= limit:
         return text
     return text[: limit // 2] + "\n…\n" + text[-limit // 2 :]
