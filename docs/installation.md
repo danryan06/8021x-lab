@@ -13,6 +13,42 @@ install, but it's a good next read.
 
 ---
 
+## Fast path: one-line install (Linux / Raspberry Pi)
+
+On a 64-bit Linux machine (including 64-bit Raspberry Pi OS), one command does
+the entire installation below — checks the platform, installs Git/Make/Docker if
+missing, downloads the code to `~/8021x-lab`, creates your configuration with a
+random `SECRET_KEY`, and starts the lab:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/install.sh | bash
+```
+
+Notes:
+
+- **Prefer to read before you run?** (Good instinct.) Download it first:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/install.sh
+less install.sh        # read it
+bash install.sh        # then run it
+```
+
+- It will ask for your **sudo password** to install packages.
+- It handles the Docker permission setup for you (no mid-install reboot needed);
+  it just reminds you at the end to log out/in once so `docker` works without
+  `sudo` in future sessions.
+- **Safe to re-run** — running it again later pulls the latest code and rebuilds,
+  so it doubles as the updater.
+- macOS/Windows aren't covered by the script — follow the manual steps below
+  with Docker Desktop.
+
+When it finishes, jump to [Step 6: Log in and verify](#step-6-log-in-and-verify).
+The rest of this guide is the **manual path** — the same steps, explained one at
+a time, worth reading if you want to understand what the installer did.
+
+---
+
 ## What you'll need
 
 | Thing | Why | Notes |
