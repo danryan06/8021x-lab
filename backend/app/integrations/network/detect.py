@@ -14,7 +14,7 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_DOCKER_IFACE = re.compile(r"^(docker|br-|veth|cni|flannel|virbr|lxc)", re.I)
+_DOCKER_IFACE = re.compile(r"^(docker|br-|veth|cni|flannel|virbr|lxc)", re.IGNORECASE)
 
 
 @dataclass

@@ -15,18 +15,18 @@ from app.schemas.entities import (
 )
 
 __all__ = [
-    "Token",
-    "TokenPayload",
+    "AuthEventRead",
+    "GenerateUsersRequest",
+    "GenerateUsersResponse",
     "LabCreate",
     "LabRead",
     "LabUpdate",
-    "RadiusUserCreate",
-    "RadiusUserRead",
-    "RadiusUserUpdate",
-    "GenerateUsersRequest",
-    "GenerateUsersResponse",
     "RadiusClientCreate",
     "RadiusClientRead",
     "RadiusClientUpdate",
-    "AuthEventRead",
+    "RadiusUserCreate",
+    "RadiusUserRead",
+    "RadiusUserUpdate",
+    "Token",
+    "TokenPayload",
 ]

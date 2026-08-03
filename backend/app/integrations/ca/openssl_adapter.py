@@ -165,4 +165,3 @@ class OpenSslLocalCaAdapter:
     def revoke(self, serial: str) -> None:
         # Phase 2+: maintain a CRL. Lab records intent only.
         _ = serial
-        return None
