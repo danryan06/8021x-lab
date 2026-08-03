@@ -83,6 +83,7 @@ docker-compose.yml
 - [Installation](docs/installation.md) — from-scratch setup (Docker, Git, clone, first login), incl. Raspberry Pi
 - [Concepts](docs/concepts.md) — what 802.1X, RADIUS, PEAP/EAP-TLS, and certificates are, and why
 - [Usage guide](docs/usage.md) — step-by-step how-to for every feature
+- [Deploying to devices](docs/deploying-to-devices.md) — install a cert on an endpoint; set up a switch port / Wi-Fi SSID for 802.1X
 - [Architecture](docs/architecture.md) — how the control plane, FreeRADIUS, and CA fit together
 - [Developer setup](docs/developer-setup.md) — install, commands, testing
 - [Deployment](docs/deployment.md)

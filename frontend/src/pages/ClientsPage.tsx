@@ -13,6 +13,7 @@ export function ClientsPage() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labId, setLabId] = useState("");
   const [clients, setClients] = useState<RadiusClient[]>([]);
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
   const [name, setName] = useState("");
   const [ip, setIp] = useState("10.0.0.1");
   const [secret, setSecret] = useState("testing123");
@@ -179,16 +180,36 @@ export function ClientsPage() {
             </tr>
           </thead>
           <tbody>
-            {clients.map((client) => (
-              <tr key={client.id} className="border-b border-ink/5">
-                <td className="px-4 py-3 font-medium">{client.name}</td>
-                <td className="px-4 py-3 font-mono">{client.ip_address}</td>
-                <td className="px-4 py-3 font-mono">
-                  {isAdvanced ? client.shared_secret : "••••••••"}
-                </td>
-                <td className="px-4 py-3">{client.enabled ? "yes" : "no"}</td>
-              </tr>
-            ))}
+            {clients.map((client) => {
+              const revealed = !!revealedSecrets[client.id];
+              return (
+                <tr key={client.id} className="border-b border-ink/5">
+                  <td className="px-4 py-3 font-medium">{client.name}</td>
+                  <td className="px-4 py-3 font-mono">{client.ip_address}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono">
+                        {revealed ? client.shared_secret : "••••••••"}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-xs text-signal underline-offset-2 hover:underline"
+                        aria-pressed={revealed}
+                        onClick={() =>
+                          setRevealedSecrets((prev) => ({
+                            ...prev,
+                            [client.id]: !prev[client.id],
+                          }))
+                        }
+                      >
+                        {revealed ? "Hide" : "Reveal"}
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">{client.enabled ? "yes" : "no"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </section>

@@ -145,6 +145,7 @@ only reads those at startup (it does not reload them on SIGHUP).
 
 ## Where to go next
 
+- [Deploying to devices](deploying-to-devices.md) — install a certificate on a real endpoint and configure a switch port or Wi-Fi SSID for 802.1X.
 - [Concepts](concepts.md) — the "what and why" behind these tasks.
 - [Developer setup](developer-setup.md) — commands, testing, running outside Compose.
 - [Roadmap](roadmap.md) — MAB, VLAN/authorization policies, and more.

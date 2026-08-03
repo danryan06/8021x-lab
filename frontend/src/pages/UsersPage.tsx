@@ -535,6 +535,12 @@ export function UsersPage() {
 
           {generated.length > 0 && (
             <div className="mt-4 space-y-2">
+              <p className="border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-ink/80">
+                <span className="font-semibold">Save these passwords now.</span> They are shown
+                only once. For security only password hashes are stored, so they can't be looked
+                up later (the users list below has no password column). The users are already
+                created and synced to FreeRADIUS.
+              </p>
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-medium">How do you want to see them?</span>
                 {(
@@ -641,6 +647,10 @@ export function UsersPage() {
       </section>
 
       <section className="overflow-x-auto ui-panel">
+        <p className="border-b border-ink/10 px-4 py-2 text-xs text-ink/55">
+          Passwords aren't shown here — only hashes are stored. Capture generated passwords from
+          the panel above when you create users, or reset a password by editing the user.
+        </p>
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-ink/10 bg-mist/40">
             <tr>

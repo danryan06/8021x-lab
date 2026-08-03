@@ -10,6 +10,7 @@ import {
   type RadiusUser,
 } from "../api/client";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
+import { InfoTip } from "../components/ui";
 import { useMode } from "../modes/ModeContext";
 
 export function AuthTestPage() {
@@ -252,6 +253,35 @@ export function AuthTestPage() {
           </div>
         ) : (
           <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              EAP-TLS certificate actions
+              <InfoTip label="What the EAP-TLS actions do">
+                <span className="block font-semibold text-ink">Certificate identity</span>
+                <span className="mt-0.5 block">
+                  The CN the certificate is issued to — it becomes the client's EAP-TLS username.
+                </span>
+                <span className="mt-2 block font-semibold text-ink">Ensure CA + issue client cert</span>
+                <span className="mt-0.5 block">
+                  Creates the lab root CA if needed, issues a client certificate for this identity,
+                  and publishes the CA into FreeRADIUS trust. Run this before your first test.
+                </span>
+                <span className="mt-2 block font-semibold text-ink">Download PEM/P12 bundle</span>
+                <span className="mt-0.5 block">
+                  Downloads the client certificate + private key (PEM and .p12) to install on a real
+                  device. The in-app test uses the server-side copy, so this is only for real endpoints.
+                </span>
+                <span className="mt-2 block font-semibold text-ink">Download root CA</span>
+                <span className="mt-0.5 block">
+                  Downloads the lab CA certificate to trust on a device or server (e.g. as the CA a
+                  supplicant validates the RADIUS server against).
+                </span>
+                <span className="mt-2 block font-semibold text-ink">Run authentication test</span>
+                <span className="mt-0.5 block">
+                  Runs eapol_test against FreeRADIUS with this certificate and shows Accept/Reject
+                  plus the ingested event.
+                </span>
+              </InfoTip>
+            </div>
             <label className="block text-sm">
               Certificate identity
               <input
