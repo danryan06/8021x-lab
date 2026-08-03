@@ -51,11 +51,15 @@ curl -fsSL https://get.docker.com | sudo sh
 
 # 4. Let your user run Docker without typing "sudo" every time
 sudo usermod -aG docker "$USER"
+
+# 5. REQUIRED — reboot so step 4 takes effect. Skipping this causes
+#    "permission denied ... docker.sock" errors later. (A full log out and
+#    log back in also works.)
+sudo reboot
 ```
 
-**Important:** after step 4 you must **log out and log back in** (or reboot) for
-the Docker permission change to take effect. On a Raspberry Pi, `sudo reboot` is
-the easy way.
+After the reboot, open a terminal again and continue with
+[Verify the prerequisites](#verify-the-prerequisites).
 
 ### macOS or Windows
 
@@ -244,9 +248,25 @@ make migrate                   # apply any new database changes
 
 ## Troubleshooting
 
-**"permission denied" talking to Docker (Linux).** You didn't log out/in after
-adding your user to the `docker` group. Log out and back in (or reboot), or prefix
-commands with `sudo`.
+**"permission denied while trying to connect to the docker API at
+unix:///var/run/docker.sock" (Linux).** Your user can't talk to Docker yet —
+the `docker` group change from Step 1.4 isn't active in this session (most
+often: the reboot after `usermod` was skipped). Diagnose:
+
+```bash
+groups                 # is "docker" listed for THIS session?
+getent group docker    # is your username at the end of this line at all?
+```
+
+- Username **is** in `getent group docker` but `groups` doesn't show it →
+  your session is stale: `sudo reboot` (or fully log out and back in).
+- Username is **not** in `getent group docker` → the usermod never happened:
+  `sudo usermod -aG docker "$USER"` then `sudo reboot`.
+- Want to continue without rebooting right now? `newgrp docker` activates the
+  group in the current shell only.
+
+Verify with `docker ps` (should print an empty table, not an error), then re-run
+`make bootstrap` — it's safe to re-run and keeps your detected settings.
 
 **"port is already allocated" / a port is in use.** Something else is using 3000,
 8000, 1812, or 1813. Stop that program, or change the published port in
