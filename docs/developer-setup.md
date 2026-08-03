@@ -45,11 +45,11 @@ Or one shot: `make bootstrap`.
 | Action | FreeRADIUS effect |
 |--------|-------------------|
 | Create/update/delete/generate/import user | Upsert/delete `radcheck` NT-Password (+ `radusergroup`) |
-| Create/update/delete client | Rewrite `clients.dot1x.conf`, mirror `nas`, write `reload.request` → `radmin hup` |
-| Ensure lab CA / issue client cert | Publish lab CA into shared `trusted/ca-bundle.pem`, reload |
+| Create/update/delete client | Rewrite `clients.dot1x.conf`, mirror `nas`, controlled FreeRADIUS **restart** (FreeRADIUS 3 does not re-read clients on HUP) |
+| Ensure lab CA / issue client cert | Publish lab CA into shared `trusted/ca-bundle.pem`; restart only if the bundle changed |
 | Auth Test (PEAP/EAP-TLS) | Backend runs `eapol_test` → FreeRADIUS → linelog → Events |
 
-UI PEAP/EAP-TLS tests use the Compose `lab-docker-host` client (`FREERADIUS_LAB_SECRET`, default `testing123`). NAS clients you create are for real switches/APs.
+UI PEAP/EAP-TLS tests use the Compose bridge-subnet catch-all clients (`FREERADIUS_LAB_SECRET`, default `testing123`). NAS clients you create are for real switches/APs and are applied via the controlled restart above.
 
 ### RADIUS target IP (what the NAS points to)
 

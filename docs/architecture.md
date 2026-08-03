@@ -25,7 +25,7 @@
 Operator → Frontend → Backend API → PostgreSQL (control plane)
                               ↓
               Sync NT-Password → radcheck / NAS → nas
-              Render clients.dot1x.conf + reload.request
+              Render clients.dot1x.conf + restart.request
                               ↓
 NAS / AP  ←——————→  FreeRADIUS (rlm_sql + EAP/PEAP)
                               ↓
@@ -47,14 +47,19 @@ Control-plane tables remain authoritative:
 
 Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL tables (`radcheck`, `radreply`, `nas`, `radacct`, …) in the same database as the app. FreeRADIUS `rlm_sql` uses dialect `postgresql` against the Compose `db` service. Users authenticate from `radcheck`. NAS rows are mirrored into `nas` for inspection, but `read_clients = no` so FreeRADIUS loads clients only from the rendered file (avoids duplicate-IP conflicts).
 
-### Client reload mechanism
+### Client apply mechanism
 
 1. Backend renders Jinja `clients.conf.j2` → shared volume `clients.dot1x.conf`.
 2. Backend upserts matching rows into `nas` (mirror / ops visibility).
-3. Backend writes `reload.request` on the shared volume.
-4. FreeRADIUS entrypoint watcher runs `radmin hup` (control socket) or sends `SIGHUP`.
+3. If the rendered file changed, backend writes `restart.request` on the shared volume.
+4. The FreeRADIUS entrypoint supervisor performs a controlled in-container restart.
 
-Stock `localhost` / `testing123` and the Compose `lab-docker-host` ranges remain available for local PEAP/EAP-TLS tests. The **Auth Test** API runs `eapol_test` inside the backend container against service DNS `freeradius:1812`.
+A **full restart** (not HUP) is required because FreeRADIUS 3.x only reads
+`clients.conf` (and its `$INCLUDE`s) at startup — SIGHUP/`radmin hup` reloads
+modules and virtual servers but explicitly not clients. The `reload.request`
+flag / HUP path still exists for module-level config that HUP does honor.
+
+Stock `localhost` / `testing123` and the Compose bridge-subnet catch-all clients remain available for local PEAP/EAP-TLS tests. The **Auth Test** API runs `eapol_test` inside the backend container against service DNS `freeradius:1812`.
 
 ### Password / MSCHAPv2 strategy
 
@@ -76,7 +81,7 @@ DOT1X|<unix-epoch>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Access-Accept|Access
 
 (`%l` epoch timestamps avoid brittle FreeRADIUS strftime xlats in linelog format strings.)
 
-The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and inserts into `authentication_events`. A stock `lab-docker-host` client (`172.16.0.0/12`, secret `testing123`) accepts RADIUS from Compose published ports on the Docker host.
+The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and inserts into `authentication_events`. Catch-all `lab-docker-host-N` clients scoped to the container's own Docker bridge subnets (secret `FREERADIUS_LAB_SECRET`, default `testing123`) accept RADIUS from Compose published ports on the Docker host; real NAS devices need per-NAS clients created in the UI.
 
 ## CA integration seam
 
