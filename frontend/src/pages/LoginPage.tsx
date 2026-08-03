@@ -1,9 +1,12 @@
 import { FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../api/AuthContext";
+import { useTheme } from "../modes/ThemeContext";
+import { Button, Field, StatusBanner } from "../components/ui";
 
 export function LoginPage() {
   const { token, login } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin");
   const [error, setError] = useState<string | null>(null);
@@ -25,42 +28,51 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-md border border-black/10 bg-white/80 p-8 shadow-sm backdrop-blur"
+    <div className="relative flex min-h-screen items-center justify-center px-4">
+      <button
+        type="button"
+        onClick={toggleTheme}
+        className="ui-btn-ghost absolute right-4 top-4"
       >
-        <h1 className="font-display text-3xl font-bold">802.1X Lab</h1>
-        <p className="mt-2 text-sm text-ink/70">
+        {theme === "dark" ? "Light mode" : "Dark mode"}
+      </button>
+      <form onSubmit={onSubmit} className="ui-panel page-enter w-full max-w-md p-8">
+        <h1 className="brand-mark font-display text-3xl font-bold tracking-tight">
+          802.1X Lab
+        </h1>
+        <p className="mt-3 text-sm text-ink/70">
           Sign in to manage your authentication sandbox.
         </p>
-        <label className="mt-6 block text-sm font-medium">
-          Username
+        <Field label="Username" className="mt-6">
           <input
-            className="mt-1 w-full border border-black/15 px-3 py-2"
+            className="ui-input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
           />
-        </label>
-        <label className="mt-4 block text-sm font-medium">
-          Password
+        </Field>
+        <Field label="Password" className="mt-4">
           <input
             type="password"
-            className="mt-1 w-full border border-black/15 px-3 py-2"
+            className="ui-input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
           />
-        </label>
-        {error && <p className="mt-3 text-sm text-fail">{error}</p>}
-        <button
+        </Field>
+        {error && (
+          <div className="mt-3">
+            <StatusBanner tone="error">{error}</StatusBanner>
+          </div>
+        )}
+        <Button
           type="submit"
           disabled={loading}
-          className="mt-6 w-full bg-ink px-4 py-2.5 font-medium text-white hover:bg-slatepanel disabled:opacity-60"
+          className="mt-6 w-full"
+          variant="signal"
         >
           {loading ? "Signing in…" : "Sign in"}
-        </button>
+        </Button>
       </form>
     </div>
   );

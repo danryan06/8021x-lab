@@ -24,12 +24,8 @@ backend-shell:
 frontend-shell:
 	docker compose exec frontend /bin/sh
 
-bootstrap: up
-	@echo "Waiting for backend..."
-	@sleep 5
-	$(MAKE) migrate
-	$(MAKE) seed
-	@echo "802.1X Lab is up: http://localhost:3000  API: http://localhost:8000/docs"
+bootstrap:
+	./scripts/bootstrap.sh
 
 test-peap:
 	./scripts/test-peap.sh

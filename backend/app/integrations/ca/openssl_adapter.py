@@ -9,6 +9,7 @@ from uuid import UUID
 
 from app.config import get_settings
 from app.integrations.ca.base import CaInfo, IssuedCert
+from app.validation import validate_identity
 
 settings = get_settings()
 
@@ -20,6 +21,21 @@ class OpenSslLocalCaAdapter:
         (path / "certs").mkdir(exist_ok=True)
         (path / "private").mkdir(exist_ok=True)
         return path
+
+    def root_cert_path(self, lab_id: UUID) -> Path:
+        return self._lab_dir(lab_id) / "certs" / "root.crt"
+
+    def root_key_path(self, lab_id: UUID) -> Path:
+        return self._lab_dir(lab_id) / "private" / "root.key"
+
+    def client_cert_path(self, lab_id: UUID, identity: str) -> Path:
+        return self._lab_dir(lab_id) / "certs" / f"{validate_identity(identity)}.crt"
+
+    def client_key_path(self, lab_id: UUID, identity: str) -> Path:
+        return self._lab_dir(lab_id) / "private" / f"{validate_identity(identity)}.key"
+
+    def client_p12_path(self, lab_id: UUID, identity: str) -> Path:
+        return self._lab_dir(lab_id) / "certs" / f"{validate_identity(identity)}.p12"
 
     def ensure_root(self, lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> CaInfo:
         lab_dir = self._lab_dir(lab_id)
@@ -58,6 +74,7 @@ class OpenSslLocalCaAdapter:
         )
 
     def issue_client_cert(self, lab_id: UUID, identity: str, days: int = 365) -> IssuedCert:
+        validate_identity(identity)
         self.ensure_root(lab_id)
         lab_dir = self._lab_dir(lab_id)
         key_path = lab_dir / "private" / f"{identity}.key"
@@ -106,6 +123,28 @@ class OpenSslLocalCaAdapter:
             capture_output=True,
         )
 
+        # Lab-friendly PKCS#12 (empty passphrase) for Windows/macOS import demos.
+        p12_path = lab_dir / "certs" / f"{identity}.p12"
+        subprocess.run(
+            [
+                "openssl",
+                "pkcs12",
+                "-export",
+                "-inkey",
+                str(key_path),
+                "-in",
+                str(cert_path),
+                "-certfile",
+                str(root_cert),
+                "-out",
+                str(p12_path),
+                "-passout",
+                "pass:",
+            ],
+            check=True,
+            capture_output=True,
+        )
+
         serial = subprocess.check_output(
             ["openssl", "x509", "-in", str(cert_path), "-noout", "-serial"],
             text=True,
@@ -124,6 +163,6 @@ class OpenSslLocalCaAdapter:
         )
 
     def revoke(self, serial: str) -> None:
-        # Phase 2: maintain a CRL. Phase 0 records intent only.
+        # Phase 2+: maintain a CRL. Lab records intent only.
         _ = serial
         return None

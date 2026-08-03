@@ -36,6 +36,9 @@ class RadiusUserCreate(BaseModel):
     lab_id: UUID
     username: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=128)
+    first_name: str | None = Field(default=None, max_length=128)
+    last_name: str | None = Field(default=None, max_length=128)
+    department: str | None = Field(default=None, max_length=128)
     groups: list[str] = Field(default_factory=list)
     status: UserStatus = UserStatus.active
     expires_at: datetime | None = None
@@ -43,6 +46,9 @@ class RadiusUserCreate(BaseModel):
 
 class RadiusUserUpdate(BaseModel):
     password: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    department: str | None = None
     groups: list[str] | None = None
     status: UserStatus | None = None
     expires_at: datetime | None = None
@@ -54,6 +60,9 @@ class RadiusUserRead(BaseModel):
     id: UUID
     lab_id: UUID
     username: str
+    first_name: str | None = None
+    last_name: str | None = None
+    department: str | None = None
     groups: list
     status: UserStatus
     expires_at: datetime | None
@@ -64,14 +73,31 @@ class RadiusUserRead(BaseModel):
 class GenerateUsersRequest(BaseModel):
     lab_id: UUID
     count: int = Field(default=10, ge=1, le=500)
+    # How usernames are formed for demo identities.
+    username_style: str = Field(
+        default="numbered",
+        pattern="^(numbered|first_last|flast|emailish)$",
+    )
     prefix: str = Field(default="user", min_length=1, max_length=32)
+    # Selectable profile attributes to populate on generate.
+    include_first_name: bool = True
+    include_last_name: bool = True
+    include_department: bool = True
+    include_groups: bool = True
+    department: str | None = Field(default="Engineering", max_length=128)
     groups: list[str] = Field(default_factory=lambda: ["students"])
-    password_length: int = Field(default=12, ge=8, le=64)
+    # Lab-friendly passwords (word+digits) by default.
+    password_style: str = Field(default="easy", pattern="^(easy|random)$")
+    password_length: int = Field(default=8, ge=6, le=64)
 
 
 class GeneratedUserCredential(BaseModel):
     username: str
     password: str
+    first_name: str | None = None
+    last_name: str | None = None
+    department: str | None = None
+    groups: list[str] = Field(default_factory=list)
 
 
 class GenerateUsersResponse(BaseModel):

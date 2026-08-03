@@ -1,6 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin
@@ -42,6 +44,35 @@ def generate_users(
     _admin=Depends(get_current_admin),
 ) -> GenerateUsersResponse:
     return user_service.generate_users(db, payload)
+
+
+@router.get("/import/template", response_class=PlainTextResponse)
+def download_users_csv_template(_admin=Depends(get_current_admin)) -> PlainTextResponse:
+    content = user_service.users_csv_template()
+    return PlainTextResponse(
+        content,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="users-import-template.csv"'},
+    )
+
+
+@router.post("/import")
+async def import_users_csv(
+    lab_id: UUID = Query(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _admin=Depends(get_current_admin),
+) -> dict:
+    raw = await file.read()
+    try:
+        content = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded") from exc
+    try:
+        # bcrypt/NT hashing per row is CPU-heavy; keep it off the event loop.
+        return await run_in_threadpool(user_service.import_users_csv, db, lab_id, content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{user_id}", response_model=RadiusUserRead)

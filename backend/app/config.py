@@ -17,6 +17,20 @@ class Settings(BaseSettings):
     freeradius_reload_command: str = 'echo "reload-requested"'
     freeradius_templates_dir: str = "/app/services/freeradius/templates"
     freeradius_auth_log_path: str = "/var/lib/dot1x-lab/freeradius/logs/auth.log"
+    # Compose service DNS name for in-cluster eapol_test / health probes.
+    freeradius_host: str = "freeradius"
+    freeradius_auth_port: int = 1812
+    # Matches services/freeradius docker-entrypoint lab-docker-host client.
+    freeradius_lab_secret: str = "testing123"
+    # FreeRADIUS EAP server CA copied onto the shared runtime volume.
+    freeradius_ca_path: str = "/var/lib/dot1x-lab/freeradius/certs/ca.pem"
+    freeradius_health_max_age_seconds: int = 45
+    # Advertised RADIUS target for real NAS/AP devices (DHCP/auto + manual override).
+    radius_advertise_ip: str = ""
+    radius_advertise_auth_port: int = 1812
+    radius_advertise_acct_port: int = 1813
+    # Optional host-written file (bootstrap) with the LAN/DHCP IPv4 to advertise.
+    radius_host_ip_file: str = "/var/lib/dot1x-lab/freeradius/host-ip"
     ca_data_dir: str = "/var/lib/dot1x-lab/ca"
     ca_adapter: str = "openssl"
 

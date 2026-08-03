@@ -43,44 +43,76 @@ else
     >/dev/null
 fi
 
-CA_PEM="/tmp/dot1x-ca.pem"
-if ! docker compose cp freeradius:/etc/freeradius/3.0/certs/ca.pem "$CA_PEM" 2>/dev/null; then
-  docker compose exec -T freeradius cat /etc/freeradius/3.0/certs/ca.pem >"$CA_PEM"
-fi
-if [[ ! -s "$CA_PEM" ]]; then
-  echo "Falling back to snakeoil cert for eapol_test CA trust"
-  docker compose exec -T freeradius cat /etc/ssl/certs/ssl-cert-snakeoil.pem >"$CA_PEM"
-fi
+# Preferred path: run eapol_test inside the backend container, which already
+# ships it (no host install, works on macOS/Windows Docker Desktop too).
+# Values are passed as environment variables, never interpolated into the
+# inner script, so quotes in TEST_USER/TEST_PASS cannot break it.
+run_in_backend() {
+  docker compose exec -T \
+    -e TEST_USER="${TEST_USER}" \
+    -e TEST_PASS="${TEST_PASS}" \
+    -e RADIUS_SECRET="${RADIUS_SECRET}" \
+    backend sh -c '
+      set -e
+      IP="$(python3 -c "import socket; print(socket.gethostbyname(\"freeradius\"))")"
+      CONF="$(mktemp /tmp/dot1x-peap.XXXXXX.conf)"
+      trap "rm -f \"$CONF\"" EXIT
+      {
+        echo "network={"
+        echo "  key_mgmt=WPA-EAP"
+        echo "  eap=PEAP"
+        printf "  identity=\"%s\"\n" "$TEST_USER"
+        printf "  password=\"%s\"\n" "$TEST_PASS"
+        echo "  phase2=\"auth=MSCHAPV2\""
+        echo "  ca_cert=\"/var/lib/dot1x-lab/freeradius/certs/ca.pem\""
+        echo "}"
+      } >"$CONF"
+      eapol_test -c "$CONF" -a "$IP" -p 1812 -s "$RADIUS_SECRET" -r 1
+    '
+}
 
-CONF="/tmp/dot1x-peap.conf"
-cat >"$CONF" <<EOF
+run_on_host() {
+  local eapol_bin ca_pem conf
+  eapol_bin="$(command -v eapol_test || command -v eapoltest)"
+  ca_pem="/tmp/dot1x-ca.pem"
+  if ! docker compose cp freeradius:/etc/freeradius/3.0/certs/ca.pem "$ca_pem" 2>/dev/null; then
+    docker compose exec -T freeradius cat /etc/freeradius/3.0/certs/ca.pem >"$ca_pem"
+  fi
+  conf="/tmp/dot1x-peap.conf"
+  cat >"$conf" <<EOF
 network={
   key_mgmt=WPA-EAP
   eap=PEAP
   identity="${TEST_USER}"
   password="${TEST_PASS}"
   phase2="auth=MSCHAPV2"
-  ca_cert="${CA_PEM}"
+  ca_cert="${ca_pem}"
 }
 EOF
+  "${eapol_bin}" -c "$conf" -a "$RADIUS_HOST" -p 1812 -s "$RADIUS_SECRET" -r 1
+}
 
-if ! command -v eapol_test >/dev/null 2>&1 && ! command -v eapoltest >/dev/null 2>&1; then
-  echo "Installing eapoltest..."
-  sudo apt-get update -qq
-  sudo apt-get install -y -qq eapoltest
-fi
-
-EAPOL_BIN="$(command -v eapol_test || command -v eapoltest)"
-echo "Running ${EAPOL_BIN} against ${RADIUS_HOST}:1812 ..."
 set +e
-"${EAPOL_BIN}" -c "$CONF" -a "$RADIUS_HOST" -p 1812 -s "$RADIUS_SECRET" -r 1 | tee /tmp/eapol-test.out
-RC=${PIPESTATUS[0]}
+if docker compose exec -T backend sh -c 'command -v eapol_test >/dev/null 2>&1' 2>/dev/null; then
+  echo "Running eapol_test inside the backend container against freeradius:1812 ..."
+  run_in_backend | tee /tmp/eapol-test.out
+  RC=${PIPESTATUS[0]}
+elif command -v eapol_test >/dev/null 2>&1 || command -v eapoltest >/dev/null 2>&1; then
+  echo "Running host eapol_test against ${RADIUS_HOST}:1812 ..."
+  run_on_host | tee /tmp/eapol-test.out
+  RC=${PIPESTATUS[0]}
+else
+  echo "ERROR: eapol_test not available. Start the stack (make bootstrap) so the" >&2
+  echo "backend container can run it, or install eapol_test/eapoltest on this host." >&2
+  exit 1
+fi
 set -e
 
 echo "Fetching recent auth events..."
 curl -fsS -H "$AUTH" "$API/events?limit=5" | python3 -m json.tool
 
-if grep -q "SUCCESS" /tmp/eapol-test.out || [[ "$RC" -eq 0 ]]; then
+# The eapol_test exit code is authoritative (0 only when all rounds succeeded).
+if [[ "$RC" -eq 0 ]]; then
   echo "PEAP smoke test completed (see events above)."
   exit 0
 fi

@@ -11,19 +11,32 @@
 - Frontend shell (dashboard, users, clients, events, wizard placeholder)
 - Simple / Advanced mode toggle
 
-## Phase 1 — RADIUS live path (current)
+## Phase 1 — RADIUS live path (done)
 
 - FreeRADIUS SQL modules wired to Postgres
 - Client sync + reload into the running FreeRADIUS container
 - PEAP with local users (NT-Password / MSCHAPv2)
 - Auth event ingestion (`DOT1X|…` linelog) and Events UI
 
-## Phase 2 — PKI + EAP-TLS
+## Phase 1.5 — Testing-ready UI (done)
 
-- Root CA creation via adapter
-- Client certificate issue / download
-- FreeRADIUS EAP-TLS
-- Failure explanations (unknown CA, expired cert, etc.)
+- **Authentication Test** page: PEAP (and basic EAP-TLS) via in-Compose `eapol_test`
+- Events auto-refresh, Accept/Reject styling, empty-state guidance
+- Dashboard health probes for DB / API / FreeRADIUS + last auth event
+- Users/Clients sync confirmation + “Sync to FreeRADIUS”
+- Guided PEAP + **guided EAP-TLS** wizard wired to real APIs
+- Lab CA ensure/issue/download + FreeRADIUS trust publish for EAP-TLS
+- UI polish + light/dark theme
+- Users: profile fields, configurable generator, easy passwords, credential view modes, CSV template/import
+
+## Phase 2 — PKI polish
+
+- Dedicated Certificates / CA inventory page (list, revoke, download history)
+- Richer certificate inventory UI / CRL
+- Deeper TLS failure explanations (unknown CA, expired cert, …)
+- step-ca adapter beyond stub
+
+> **Note:** Basic lab CA already ships in Phase 1.5 (Wizard + Auth Test: ensure root, issue client cert, PEM/P12 download, FreeRADIUS trust). Phase 2 is the inventory/CRL polish — not a greenfield CA build.
 
 ## Phase 3 — MAB + policies
 
@@ -31,9 +44,9 @@
 - Authorization reply attributes (VLAN, Filter-Id, …)
 - Simple vs Advanced policy editors
 
-## Phase 4 — Guided wizard
+## Phase 4 — Wizard expansions
 
-- End-to-end “Create your first 802.1X lab” using real backends
+- Additional guided flows (wireless-specific, MAB) beyond the PEAP / EAP-TLS first-lab paths
 
 ## Phase 5 — Appliance packaging
 

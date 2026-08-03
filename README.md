@@ -18,7 +18,15 @@ cp .env.example .env
 - **API docs:** http://localhost:8000/docs  
 - **Default admin:** values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
 
-See [docs/developer-setup.md](docs/developer-setup.md) for details.
+### Test authentication from the UI
+
+1. Log in → open **Wizard** (guided PEAP or EAP-TLS) or **Auth Test**.
+2. On the Dashboard, confirm the **RADIUS target** IP (Auto from DHCP/host, or Manual).
+3. Follow the wizard steps, or create a user/cert and run a test from Auth Test — no CLI required.
+4. Confirm Accept/Reject and a live row under **Auth Events**.
+5. Toggle **Dark / Light** in the header anytime.
+
+See [docs/developer-setup.md](docs/developer-setup.md) for sync/reload details and optional `make test-peap`.
 
 ## What this is
 
@@ -26,9 +34,10 @@ See [docs/developer-setup.md](docs/developer-setup.md) for details.
 |---------|-----------------------------------|
 | Visual lab control plane | FreeRADIUS replacement |
 | Local users + PEAP/MSCHAPv2 | Active Directory / LDAP |
+| Basic EAP-TLS (lab CA + cert download + test) | Full enterprise PKI / CRL workflows |
 | RADIUS client sync into FreeRADIUS | Vendor switch/WLC generators |
-| Auth events from live FreeRADIUS | Production-hardened PKI / NAC |
-| CA adapter seam (EAP-TLS next) | Cloud identity providers |
+| Auth events from live FreeRADIUS | Production-hardened NAC |
+| Guided PEAP first-lab wizard | Cloud identity providers |
 
 ## Stack
 

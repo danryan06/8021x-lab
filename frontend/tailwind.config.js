@@ -4,16 +4,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#0f1720",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        mist: "rgb(var(--mist) / <alpha-value>)",
+        panel: "rgb(var(--panel) / <alpha-value>)",
+        signal: "rgb(var(--signal) / <alpha-value>)",
+        "signal-ink": "rgb(var(--signal-ink) / <alpha-value>)",
+        warn: "rgb(var(--warn) / <alpha-value>)",
+        fail: "rgb(var(--fail) / <alpha-value>)",
+        header: "rgb(var(--header) / <alpha-value>)",
+        "header-fg": "rgb(var(--header-fg) / <alpha-value>)",
         slatepanel: "#1a2430",
-        signal: "#3d9b8f",
-        warn: "#d97706",
-        fail: "#dc2626",
-        mist: "#e8eef2",
       },
       fontFamily: {
-        display: ["\"IBM Plex Sans\"", "Segoe UI", "sans-serif"],
-        mono: ["\"IBM Plex Mono\"", "ui-monospace", "monospace"],
+        display: ['"IBM Plex Sans"', "Segoe UI", "sans-serif"],
+        mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
+      },
+      boxShadow: {
+        soft: "0 10px 30px -18px rgb(var(--shadow) / 0.45)",
       },
     },
   },

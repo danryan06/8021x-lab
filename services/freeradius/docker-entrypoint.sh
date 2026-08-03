@@ -7,14 +7,18 @@ RUNTIME_DIR="${RUNTIME_DIR:-/etc/freeradius/dot1x-lab}"
 LOG_DIR="${RUNTIME_DIR}/logs"
 CLIENTS_FILE="${RUNTIME_DIR}/clients.dot1x.conf"
 RELOAD_FLAG="${RUNTIME_DIR}/reload.request"
+RESTART_FLAG="${RUNTIME_DIR}/restart.request"
 PID_FILE="${PID_FILE:-/var/run/freeradius/freeradius.pid}"
 
-mkdir -p "${RUNTIME_DIR}" "${LOG_DIR}" /var/run/freeradius
+mkdir -p "${RUNTIME_DIR}" "${LOG_DIR}" "${RUNTIME_DIR}/certs" "${RUNTIME_DIR}/trusted" /var/run/freeradius
 touch "${CLIENTS_FILE}"
 chmod 644 "${CLIENTS_FILE}" || true
 # World-readable lab auth log so the backend worker can tail it from the shared volume.
 touch "${LOG_DIR}/auth.log"
 chmod 666 "${LOG_DIR}/auth.log" || true
+# Heartbeat file polled by the control-plane /api/health FreeRADIUS check.
+echo "starting" >"${RUNTIME_DIR}/health.status"
+chmod 666 "${RUNTIME_DIR}/health.status" || true
 
 # Render SQL module connection from environment (Compose db service).
 SQL_CONF="${FR_DIR}/mods-available/sql"
@@ -85,7 +89,7 @@ for i in $(seq 1 60); do
 	sleep 1
 done
 
-# Ensure EAP lab certs exist for PEAP server certificate presentation.
+# Ensure EAP lab certs exist for PEAP/EAP-TLS server certificate presentation.
 CERT_DIR="${FR_DIR}/certs"
 echo "Ensuring FreeRADIUS EAP lab certificates..."
 bash /usr/local/bin/generate-eap-certs.sh "${CERT_DIR}" || true
@@ -93,7 +97,22 @@ bash /usr/local/bin/generate-eap-certs.sh "${CERT_DIR}" || true
 chown -R freerad:freerad "${CERT_DIR}" 2>/dev/null || true
 chmod 640 "${CERT_DIR}"/*.key 2>/dev/null || true
 chmod 644 "${CERT_DIR}"/*.pem "${CERT_DIR}"/*.crt 2>/dev/null || true
-if [[ -f "${CERT_DIR}/server.pem" && -f "${CERT_DIR}/server.key" && -f "${CERT_DIR}/ca.pem" ]]; then
+
+# Export server CA onto the shared volume for backend eapol_test (PEAP/EAP-TLS).
+if [[ -f "${CERT_DIR}/ca.pem" ]]; then
+	cp "${CERT_DIR}/ca.pem" "${RUNTIME_DIR}/certs/ca.pem"
+	chmod 644 "${RUNTIME_DIR}/certs/ca.pem" || true
+	# Seed trust bundle so EAP-TLS ca_file path always exists; lab CAs are appended by the API.
+	if [[ ! -f "${RUNTIME_DIR}/trusted/ca-bundle.pem" ]]; then
+		cp "${CERT_DIR}/ca.pem" "${RUNTIME_DIR}/trusted/ca-bundle.pem"
+		chmod 644 "${RUNTIME_DIR}/trusted/ca-bundle.pem" || true
+	fi
+fi
+
+configure_eap_certs() {
+	if [[ ! -f "${CERT_DIR}/server.pem" || ! -f "${CERT_DIR}/server.key" || ! -f "${CERT_DIR}/ca.pem" ]]; then
+		return 0
+	fi
 	EAP_MOD="${FR_DIR}/mods-available/eap"
 	# Bootstrap keys use passphrase "whatever"; our openssl fallback is unencrypted.
 	if grep -q "ENCRYPTED" "${CERT_DIR}/server.key" 2>/dev/null; then
@@ -101,13 +120,22 @@ if [[ -f "${CERT_DIR}/server.pem" && -f "${CERT_DIR}/server.key" && -f "${CERT_D
 	else
 		KEY_PASS_LINE='		private_key_password ='
 	fi
+	# ca_file trusts client certs (EAP-TLS). Prefer the shared bundle (bootstrap + lab CAs).
+	CA_FILE="${RUNTIME_DIR}/trusted/ca-bundle.pem"
+	if [[ ! -f "${CA_FILE}" ]]; then
+		CA_FILE="${CERT_DIR}/ca.pem"
+	fi
 	sed -i \
 		-e "s|^[[:space:]]*private_key_password = .*|${KEY_PASS_LINE}|" \
 		-e "s|^[[:space:]]*private_key_file = .*|		private_key_file = ${CERT_DIR}/server.key|" \
 		-e "s|^[[:space:]]*certificate_file = .*|		certificate_file = ${CERT_DIR}/server.pem|" \
-		-e "s|^[[:space:]]*ca_file = .*|		ca_file = ${CERT_DIR}/ca.pem|" \
+		-e "s|^[[:space:]]*ca_file = .*|		ca_file = ${CA_FILE}|" \
 		"${EAP_MOD}"
-fi
+	# Keep PEAP as default; EAP-TLS is selected by the client.
+	sed -i 's/^[[:space:]]*default_eap_type = .*/	default_eap_type = peap/' "${EAP_MOD}" || true
+}
+
+configure_eap_certs
 
 # Include control-plane rendered clients + lab Docker host client.
 if ! grep -q 'dot1x-lab/clients.dot1x.conf' "${FR_DIR}/clients.conf"; then
@@ -119,19 +147,31 @@ EOF
 fi
 
 # Published host ports appear as the Compose bridge gateway (often 172.18.0.1).
-# Allow that path for local eapol_test / radtest from the Docker host.
-if ! grep -q 'client lab-docker-host' "${FR_DIR}/clients.conf"; then
-	cat >>"${FR_DIR}/clients.conf" <<'EOF'
+# Allow that path for local eapol_test / radtest from the Docker host, scoped to
+# the container's own connected subnets only — never to whole RFC1918 blocks,
+# which would let any LAN device talk RADIUS with a well-known secret. Real NAS
+# devices must use per-NAS clients created in the UI (synced + restart-applied).
+LAB_SECRET="${FREERADIUS_LAB_SECRET:-testing123}"
+CATCHALL_FILE="${FR_DIR}/clients-lab-catchall.conf"
+{
+	echo "# 802.1X Lab — Docker bridge source ranges (regenerated each start)"
+	subnets="$( (ip -4 route show proto kernel 2>/dev/null || true) | awk '$1 ~ /\// {print $1}' | sort -u)"
+	if [[ -z "${subnets}" ]]; then
+		# Detection failed (no iproute2?) — fall back to the Docker default pool.
+		subnets="172.16.0.0/12"
+	fi
+	idx=0
+	for subnet in ${subnets}; do
+		idx=$((idx + 1))
+		printf 'client lab-docker-host-%s {\n\tipaddr = %s\n\tsecret = %s\n}\n' \
+			"${idx}" "${subnet}" "${LAB_SECRET}"
+	done
+} >"${CATCHALL_FILE}"
+if ! grep -q 'clients-lab-catchall.conf' "${FR_DIR}/clients.conf"; then
+	cat >>"${FR_DIR}/clients.conf" <<EOF
 
 # 802.1X Lab — Docker published-port source ranges (lab only)
-client lab-docker-host {
-	ipaddr = 172.16.0.0/12
-	secret = testing123
-}
-client lab-docker-host-192 {
-	ipaddr = 192.168.0.0/16
-	secret = testing123
-}
+\$INCLUDE ${CATCHALL_FILE}
 EOF
 fi
 
@@ -162,8 +202,10 @@ ensure_linelog() {
 			"${site}"
 	fi
 }
+# Instrument only the outer server: adding linelog to inner-tunnel as well makes
+# every PEAP auth emit two DOT1X lines (inner MSCHAPv2 + outer PEAP), which the
+# ingestion worker would surface as duplicate events in the UI.
 ensure_linelog "${FR_DIR}/sites-enabled/default"
-ensure_linelog "${FR_DIR}/sites-enabled/inner-tunnel"
 
 # Soft-fail SQL is already "-sql" in Debian sites; nothing else required for authorize.
 
@@ -185,31 +227,16 @@ request_reload() {
 	return 1
 }
 
-reload_watcher() {
-	while true; do
-		if [[ -f "${RELOAD_FLAG}" ]]; then
-			echo "Reload requested via ${RELOAD_FLAG}"
-			rm -f "${RELOAD_FLAG}"
-			if request_reload; then
-				echo "FreeRADIUS reload completed"
-			else
-				echo "WARNING: FreeRADIUS reload failed" >&2
-			fi
-		fi
-		sleep 1
-	done
-}
-
 start_freeradius() {
-	# Discard stale reload flags from previous runs so we do not HUP during boot.
-	rm -f "${RELOAD_FLAG}"
+	# Discard stale reload/restart flags from previous runs during boot.
+	rm -f "${RELOAD_FLAG}" "${RESTART_FLAG}"
 	# Keep freeradius as a real child (do not disown) so `wait` works and EXIT
 	# cleanup does not race with a detached process.
 	freeradius -f -l stdout &
 	FR_PID=$!
 	echo "${FR_PID}" >"${PID_FILE}"
 
-	# Wait for control socket (or process death) before enabling reload watcher.
+	# Wait for control socket (or process death) before returning.
 	for _ in $(seq 1 30); do
 		if [[ -S "${CONTROL_SOCK}" ]]; then
 			echo "FreeRADIUS control socket is ready"
@@ -222,19 +249,13 @@ start_freeradius() {
 		fi
 		sleep 1
 	done
-	echo "WARNING: control socket not ready; reload watcher will use SIGHUP fallback" >&2
+	echo "WARNING: control socket not ready; reload will use SIGHUP fallback" >&2
 	return 0
 }
-
-start_freeradius
-
-reload_watcher &
-WATCHER_PID=$!
 
 STOPPING=0
 cleanup() {
 	STOPPING=1
-	kill "${WATCHER_PID}" 2>/dev/null || true
 	if [[ -n "${FR_PID:-}" ]] && kill -0 "${FR_PID}" 2>/dev/null; then
 		kill "${FR_PID}" 2>/dev/null || true
 		wait "${FR_PID}" 2>/dev/null || true
@@ -242,13 +263,61 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# If FreeRADIUS exits on its own, end the container so Compose can restart it.
-wait "${FR_PID}"
-status=$?
-if [[ "${STOPPING}" -eq 0 ]]; then
-	echo "FreeRADIUS exited with status ${status}" >&2
-fi
-# Disable cleanup kill on normal wait completion (already dead).
+# Supervise FreeRADIUS in-process so ca_file trust updates can restart without
+# exiting the container (HUP alone does not reliably reload OpenSSL trust stores).
+while [[ "${STOPPING}" -eq 0 ]]; do
+	if ! start_freeradius; then
+		echo "ERROR: FreeRADIUS failed to start" >&2
+		exit 1
+	fi
+
+	CONTROLLED_RESTART=0
+	while [[ "${STOPPING}" -eq 0 ]] && kill -0 "${FR_PID}" 2>/dev/null; do
+		echo "ok $(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${RUNTIME_DIR}/health.status" 2>/dev/null || true
+
+		if [[ -f "${RUNTIME_DIR}/trusted/updated.flag" ]]; then
+			rm -f "${RUNTIME_DIR}/trusted/updated.flag"
+			configure_eap_certs
+		fi
+
+		if [[ -f "${RESTART_FLAG}" ]]; then
+			echo "Restart requested via ${RESTART_FLAG}"
+			rm -f "${RESTART_FLAG}" "${RELOAD_FLAG}"
+			configure_eap_certs
+			CONTROLLED_RESTART=1
+			kill "${FR_PID}" 2>/dev/null || true
+			break
+		fi
+
+		if [[ -f "${RELOAD_FLAG}" ]]; then
+			echo "Reload requested via ${RELOAD_FLAG}"
+			rm -f "${RELOAD_FLAG}"
+			if request_reload; then
+				echo "FreeRADIUS reload completed"
+			else
+				echo "WARNING: FreeRADIUS reload failed" >&2
+			fi
+		fi
+		sleep 1
+	done
+
+	# Capture the real exit status ("|| true" here would make $? always 0 and
+	# report crashes as clean exits); guard against set -e with "|| status=$?".
+	status=0
+	wait "${FR_PID}" 2>/dev/null || status=$?
+
+	if [[ "${STOPPING}" -ne 0 ]]; then
+		break
+	fi
+	if [[ "${CONTROLLED_RESTART}" -eq 1 ]]; then
+		echo "FreeRADIUS restarting to apply config/trust updates..."
+		continue
+	fi
+
+	echo "FreeRADIUS exited unexpectedly with status ${status}" >&2
+	trap - EXIT
+	exit "${status}"
+done
+
 trap - EXIT
-kill "${WATCHER_PID}" 2>/dev/null || true
-exit "${status}"
+exit 0

@@ -1,5 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
-import { apiFetch, type Lab, type RadiusClient } from "../api/client";
+import {
+  apiFetch,
+  type FreeRadiusSyncResponse,
+  type Lab,
+  type RadiusClient,
+} from "../api/client";
+import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
 import { useMode } from "../modes/ModeContext";
 
 export function ClientsPage() {
@@ -12,6 +18,7 @@ export function ClientsPage() {
   const [secret, setSecret] = useState("testing123");
   const [deviceType, setDeviceType] = useState("switch");
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   async function refresh(selectedLab: string) {
     const data = await apiFetch<RadiusClient[]>(
@@ -35,6 +42,7 @@ export function ClientsPage() {
     e.preventDefault();
     if (!labId) return;
     setError(null);
+    setStatus(null);
     try {
       await apiFetch("/clients", {
         method: "POST",
@@ -47,46 +55,79 @@ export function ClientsPage() {
         }),
       });
       setName("");
+      setStatus(
+        "Client created — synced to clients.dot1x.conf + nas, FreeRADIUS reload requested.",
+      );
       await refresh(labId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
     }
   }
 
+  async function syncLab() {
+    if (!labId) return;
+    setError(null);
+    setStatus(null);
+    try {
+      const res = await apiFetch<FreeRadiusSyncResponse>(
+        `/freeradius/sync?lab_id=${labId}`,
+        { method: "POST" },
+      );
+      setStatus(
+        `FreeRADIUS sync: ${res.users_synced} users, ${res.clients_synced} clients — reload requested`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
+    }
+  }
+
   return (
-    <div className="space-y-8">
+    <div className="page-enter space-y-8">
       <section>
         <h1 className="font-display text-3xl font-bold">RADIUS Clients</h1>
         <p className="mt-1 text-ink/70">
-          Network access devices (switches, WLCs, APs) that send RADIUS requests.
+          Network access devices (switches, WLCs, APs) that send RADIUS requests. Changes sync into
+          FreeRADIUS immediately.
         </p>
       </section>
 
       {error && <p className="text-fail">{error}</p>}
+      {status && <p className="text-signal">{status}</p>}
 
-      <label className="block text-sm">
-        Lab
-        <select
-          className="mt-1 block border border-black/15 bg-white px-3 py-2"
-          value={labId}
-          onChange={(e) => {
-            setLabId(e.target.value);
-            refresh(e.target.value).catch((err: Error) => setError(err.message));
-          }}
+      {labId && <RadiusTargetPanel labId={labId} />}
+
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="block text-sm">
+          Lab
+          <select
+            className="mt-1 block ui-btn-ghost px-3 py-2"
+            value={labId}
+            onChange={(e) => {
+              setLabId(e.target.value);
+              refresh(e.target.value).catch((err: Error) => setError(err.message));
+            }}
+          >
+            {labs.map((lab) => (
+              <option key={lab.id} value={lab.id}>
+                {lab.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={syncLab}
+          className="ui-btn-ghost px-3 py-2 text-sm"
         >
-          {labs.map((lab) => (
-            <option key={lab.id} value={lab.id}>
-              {lab.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          Sync to FreeRADIUS
+        </button>
+      </div>
 
-      <form onSubmit={onCreate} className="grid gap-4 border border-black/10 bg-white/70 p-5 md:grid-cols-2">
+      <form onSubmit={onCreate} className="grid gap-4 ui-panel p-5 md:grid-cols-2">
         <label className="text-sm">
           Device name
           <input
-            className="mt-1 w-full border border-black/15 px-3 py-2"
+            className="ui-input"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -95,7 +136,7 @@ export function ClientsPage() {
         <label className="text-sm">
           IP / CIDR
           <input
-            className="mt-1 w-full border border-black/15 px-3 py-2"
+            className="ui-input"
             value={ip}
             onChange={(e) => setIp(e.target.value)}
             required
@@ -104,7 +145,7 @@ export function ClientsPage() {
         <label className="text-sm">
           Shared secret
           <input
-            className="mt-1 w-full border border-black/15 px-3 py-2 font-mono"
+            className="ui-input font-mono"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
             required
@@ -114,22 +155,22 @@ export function ClientsPage() {
           <label className="text-sm">
             Device type
             <input
-              className="mt-1 w-full border border-black/15 px-3 py-2"
+              className="ui-input"
               value={deviceType}
               onChange={(e) => setDeviceType(e.target.value)}
             />
           </label>
         )}
         <div className="md:col-span-2">
-          <button type="submit" className="bg-ink px-4 py-2 text-white">
+          <button type="submit" className="ui-btn-primary">
             Add client
           </button>
         </div>
       </form>
 
-      <section className="overflow-x-auto border border-black/10 bg-white/70">
+      <section className="overflow-x-auto ui-panel">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-black/10 bg-mist/80">
+          <thead className="border-b border-ink/10 bg-mist/40">
             <tr>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">IP</th>
@@ -139,7 +180,7 @@ export function ClientsPage() {
           </thead>
           <tbody>
             {clients.map((client) => (
-              <tr key={client.id} className="border-b border-black/5">
+              <tr key={client.id} className="border-b border-ink/5">
                 <td className="px-4 py-3 font-medium">{client.name}</td>
                 <td className="px-4 py-3 font-mono">{client.ip_address}</td>
                 <td className="px-4 py-3 font-mono">

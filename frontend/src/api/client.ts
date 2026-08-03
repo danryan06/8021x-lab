@@ -18,6 +18,14 @@ export function setToken(token: string | null) {
   else localStorage.removeItem("dot1x_token");
 }
 
+/** Clear the expired/invalid session and send the SPA back to the login page. */
+function handleUnauthorized() {
+  setToken(null);
+  if (window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -31,6 +39,10 @@ export async function apiFetch<T>(
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "Session expired — please sign in again");
+    }
     let detail = res.statusText;
     try {
       const data = await res.json();
@@ -38,10 +50,41 @@ export async function apiFetch<T>(
     } catch {
       /* ignore */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Authenticated binary/download helper (PEM, P12, ZIP). */
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+  if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "Session expired — please sign in again");
+    }
+    let detail = res.statusText;
+    try {
+      const data = await res.json();
+      detail = data.detail || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, typeof detail === "string" ? detail : "Download failed");
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function login(username: string, password: string): Promise<string> {
@@ -70,6 +113,9 @@ export type RadiusUser = {
   id: string;
   lab_id: string;
   username: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  department?: string | null;
   groups: string[];
   status: string;
   expires_at: string | null;
@@ -98,4 +144,55 @@ export type AuthEvent = {
 export type HealthResponse = {
   status: string;
   components: { name: string; status: string; detail?: string }[];
+};
+
+export type AuthTestContext = {
+  radius_host: string;
+  radius_port: number;
+  shared_secret_hint: string;
+  note: string;
+};
+
+export type AuthTestResponse = {
+  method: string;
+  identity: string;
+  result: string;
+  expected_reject: boolean;
+  matched_expectation: boolean;
+  failure_reason: string | null;
+  eapol_exit_code: number;
+  eapol_output: string;
+  radius: AuthTestContext;
+  event: AuthEvent | null;
+};
+
+export type FreeRadiusSyncResponse = {
+  users_synced: number;
+  clients_synced: number;
+  reload_requested: boolean;
+  lab_ids: string[];
+  detail: string;
+};
+
+export type RadiusTargetCandidate = {
+  ip: string;
+  interface: string | null;
+  source: string;
+  likely_docker: boolean;
+  is_private: boolean;
+};
+
+export type RadiusTarget = {
+  lab_id: string | null;
+  mode: "auto" | "manual";
+  advertise_ip: string | null;
+  effective_ip: string | null;
+  auth_port: number;
+  acct_port: number;
+  shared_secret_hint: string;
+  lab_shared_secret: string;
+  candidates: RadiusTargetCandidate[];
+  nas_instructions: string;
+  warning: string | null;
+  auto_source: string | null;
 };
