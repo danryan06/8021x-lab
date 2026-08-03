@@ -1,6 +1,6 @@
 from app.models.entities import (
-    AuthPolicy,
     AuthenticationEvent,
+    AuthPolicy,
     AuthzPolicy,
     Certificate,
     CertificateAuthority,
@@ -11,13 +11,13 @@ from app.models.entities import (
 )
 
 __all__ = [
-    "Lab",
-    "RadiusUser",
-    "Endpoint",
+    "AuthPolicy",
+    "AuthenticationEvent",
+    "AuthzPolicy",
     "Certificate",
     "CertificateAuthority",
-    "AuthPolicy",
-    "AuthzPolicy",
+    "Endpoint",
+    "Lab",
     "RadiusClient",
-    "AuthenticationEvent",
+    "RadiusUser",
 ]
