@@ -8,7 +8,14 @@ The easiest way for Wi-Fi and network engineers to learn, test, and demonstrate 
 
 ## Quick start
 
-Already have Docker + Git and just want it running:
+**One-line install** (64-bit Linux, incl. Raspberry Pi OS 64-bit) — installs
+Docker/Git if missing, downloads the code, and starts the lab:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/install.sh | bash
+```
+
+Already have Docker + Git and prefer the manual way:
 
 ```bash
 git clone https://github.com/danryan06/8021x-lab.git
@@ -22,9 +29,9 @@ cp .env.example .env
 - **API docs:** http://localhost:8000/docs  
 - **Default admin:** values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
 
-**Starting from a fresh machine (or a Raspberry Pi)?** Follow the
-[step-by-step installation guide](docs/installation.md) — it covers installing
-Docker and Git from scratch, cloning the repo, and first login.
+New to Docker or want each step explained (including macOS/Windows and
+Raspberry Pi specifics)? Follow the
+[step-by-step installation guide](docs/installation.md).
 
 ### Test authentication from the UI
 
@@ -67,7 +74,7 @@ backend/          FastAPI control plane
 frontend/         React SPA
 services/         FreeRADIUS + CA adapter notes/templates
 docs/             Architecture, setup, deployment, roadmap
-scripts/          Bootstrap helpers
+scripts/          One-line installer + bootstrap helpers
 docker-compose.yml
 ```
 
