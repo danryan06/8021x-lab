@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, type AuthEvent } from "../api/client";
 import { Button, PageHeader, StatusBanner } from "../components/ui";
@@ -10,8 +10,13 @@ export function EventsPage() {
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const refreshInFlight = useRef(false);
 
   async function refresh() {
+    // Skip overlapping polls: a slow response (e.g. during a FreeRADIUS
+    // restart) must not land after a newer one and roll the table backwards.
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     try {
       const data = await apiFetch<AuthEvent[]>("/events?limit=100");
       setEvents(data);
@@ -19,6 +24,8 @@ export function EventsPage() {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load events");
+    } finally {
+      refreshInFlight.current = false;
     }
   }
 

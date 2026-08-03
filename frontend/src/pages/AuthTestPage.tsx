@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   apiDownload,
@@ -27,12 +27,17 @@ export function AuthTestPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AuthTestResponse | null>(null);
   const [caNote, setCaNote] = useState<string | null>(null);
+  const selectedLabRef = useRef("");
 
   async function loadLab(selected: string) {
+    selectedLabRef.current = selected;
     const [u, c] = await Promise.all([
       apiFetch<RadiusUser[]>(`/users?lab_id=${selected}`),
       apiFetch<RadiusClient[]>(`/clients?lab_id=${selected}`),
     ]);
+    // Discard responses for a lab that is no longer selected, otherwise a fast
+    // lab switch can pair users from lab A with labId B in the test payload.
+    if (selectedLabRef.current !== selected) return;
     setUsers(u);
     setClients(c);
     setUserId(u[0]?.id || "");

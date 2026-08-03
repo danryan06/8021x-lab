@@ -19,6 +19,7 @@ export function RadiusTargetPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [secretRevealed, setSecretRevealed] = useState(false);
 
   async function load() {
     const q = labId ? `?lab_id=${labId}` : "";
@@ -137,7 +138,18 @@ export function RadiusTargetPanel({
           </div>
           <div>
             <dt className="text-ink/50">Lab shared secret</dt>
-            <dd className="font-mono">{target.lab_shared_secret}</dd>
+            <dd className="flex items-center gap-2 font-mono">
+              {/* Masked by default: this panel is on most pages and would
+                  otherwise leak the secret on any screen share. */}
+              <span>{secretRevealed ? target.lab_shared_secret : "••••••••"}</span>
+              <button
+                type="button"
+                className="text-xs font-sans text-signal underline-offset-2 hover:underline"
+                onClick={() => setSecretRevealed((v) => !v)}
+              >
+                {secretRevealed ? "Hide" : "Reveal"}
+              </button>
+            </dd>
           </div>
           {!compact && (
             <div className="md:col-span-2">

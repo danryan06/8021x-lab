@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   apiFetch,
@@ -26,16 +26,26 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const loadInFlight = useRef(false);
 
   async function load() {
-    const [h, l, events] = await Promise.all([
-      apiFetch<HealthResponse>("/health"),
-      apiFetch<Lab[]>("/labs"),
-      apiFetch<AuthEvent[]>("/events?limit=1"),
-    ]);
-    setHealth(h);
-    setLabs(l);
-    setLastEvent(events[0] || null);
+    // Skip a tick while the previous one is still running so a slow health
+    // probe cannot land after (and overwrite) newer data.
+    if (loadInFlight.current) return;
+    loadInFlight.current = true;
+    try {
+      const [h, l, events] = await Promise.all([
+        apiFetch<HealthResponse>("/health"),
+        apiFetch<Lab[]>("/labs"),
+        apiFetch<AuthEvent[]>("/events?limit=1"),
+      ]);
+      setHealth(h);
+      setLabs(l);
+      setLastEvent(events[0] || null);
+      setError(null);
+    } finally {
+      loadInFlight.current = false;
+    }
   }
 
   useEffect(() => {
@@ -53,7 +63,8 @@ export function DashboardPage() {
     try {
       const res = await apiFetch<FreeRadiusSyncResponse>("/freeradius/sync", { method: "POST" });
       setSyncMsg(
-        `Synced ${res.users_synced} users, ${res.clients_synced} clients — reload requested`,
+        `Synced ${res.users_synced} users, ${res.clients_synced} clients — ` +
+          "FreeRADIUS restarts automatically if client or trust config changed",
       );
       await load();
     } catch (err) {

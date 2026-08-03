@@ -18,6 +18,14 @@ export function setToken(token: string | null) {
   else localStorage.removeItem("dot1x_token");
 }
 
+/** Clear the expired/invalid session and send the SPA back to the login page. */
+function handleUnauthorized() {
+  setToken(null);
+  if (window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -31,6 +39,10 @@ export async function apiFetch<T>(
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "Session expired — please sign in again");
+    }
     let detail = res.statusText;
     try {
       const data = await res.json();
@@ -51,6 +63,10 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(`${API_BASE}${path}`, { headers });
   if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "Session expired — please sign in again");
+    }
     let detail = res.statusText;
     try {
       const data = await res.json();
