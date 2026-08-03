@@ -147,19 +147,31 @@ EOF
 fi
 
 # Published host ports appear as the Compose bridge gateway (often 172.18.0.1).
-# Allow that path for local eapol_test / radtest from the Docker host.
-if ! grep -q 'client lab-docker-host' "${FR_DIR}/clients.conf"; then
-	cat >>"${FR_DIR}/clients.conf" <<'EOF'
+# Allow that path for local eapol_test / radtest from the Docker host, scoped to
+# the container's own connected subnets only — never to whole RFC1918 blocks,
+# which would let any LAN device talk RADIUS with a well-known secret. Real NAS
+# devices must use per-NAS clients created in the UI (synced + restart-applied).
+LAB_SECRET="${FREERADIUS_LAB_SECRET:-testing123}"
+CATCHALL_FILE="${FR_DIR}/clients-lab-catchall.conf"
+{
+	echo "# 802.1X Lab — Docker bridge source ranges (regenerated each start)"
+	subnets="$( (ip -4 route show proto kernel 2>/dev/null || true) | awk '$1 ~ /\// {print $1}' | sort -u)"
+	if [[ -z "${subnets}" ]]; then
+		# Detection failed (no iproute2?) — fall back to the Docker default pool.
+		subnets="172.16.0.0/12"
+	fi
+	idx=0
+	for subnet in ${subnets}; do
+		idx=$((idx + 1))
+		printf 'client lab-docker-host-%s {\n\tipaddr = %s\n\tsecret = %s\n}\n' \
+			"${idx}" "${subnet}" "${LAB_SECRET}"
+	done
+} >"${CATCHALL_FILE}"
+if ! grep -q 'clients-lab-catchall.conf' "${FR_DIR}/clients.conf"; then
+	cat >>"${FR_DIR}/clients.conf" <<EOF
 
 # 802.1X Lab — Docker published-port source ranges (lab only)
-client lab-docker-host {
-	ipaddr = 172.16.0.0/12
-	secret = testing123
-}
-client lab-docker-host-192 {
-	ipaddr = 192.168.0.0/16
-	secret = testing123
-}
+\$INCLUDE ${CATCHALL_FILE}
 EOF
 fi
 
@@ -190,8 +202,10 @@ ensure_linelog() {
 			"${site}"
 	fi
 }
+# Instrument only the outer server: adding linelog to inner-tunnel as well makes
+# every PEAP auth emit two DOT1X lines (inner MSCHAPv2 + outer PEAP), which the
+# ingestion worker would surface as duplicate events in the UI.
 ensure_linelog "${FR_DIR}/sites-enabled/default"
-ensure_linelog "${FR_DIR}/sites-enabled/inner-tunnel"
 
 # Soft-fail SQL is already "-sql" in Debian sites; nothing else required for authorize.
 
@@ -287,8 +301,10 @@ while [[ "${STOPPING}" -eq 0 ]]; do
 		sleep 1
 	done
 
-	wait "${FR_PID}" 2>/dev/null || true
-	status=$?
+	# Capture the real exit status ("|| true" here would make $? always 0 and
+	# report crashes as clean exits); guard against set -e with "|| status=$?".
+	status=0
+	wait "${FR_PID}" 2>/dev/null || status=$?
 
 	if [[ "${STOPPING}" -ne 0 ]]; then
 		break

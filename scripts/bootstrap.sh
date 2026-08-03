@@ -29,15 +29,29 @@ else
 fi
 
 docker compose up -d --build
-echo "Waiting for database..."
-sleep 8
-docker compose exec -T backend alembic upgrade head
+
+# Retry migrations instead of a fixed sleep: on slow machines / cold caches the
+# database can take well over 8s, and a single failed attempt aborted bootstrap.
+echo "Applying database migrations..."
+migrated=0
+for attempt in $(seq 1 30); do
+  if docker compose exec -T backend alembic upgrade head; then
+    migrated=1
+    break
+  fi
+  echo "Database not ready yet (attempt ${attempt}/30); retrying in 2s..."
+  sleep 2
+done
+if [[ "${migrated}" -ne 1 ]]; then
+  echo "ERROR: migrations did not apply after 60s. Check: docker compose logs db backend" >&2
+  exit 1
+fi
 docker compose exec -T backend python -m app.seed
 
 # Persist detected host IP into the shared runtime volume for the API auto mode.
 if [[ -n "${HOST_IP}" ]]; then
-  docker compose exec -T backend sh -c \
-    "mkdir -p /var/lib/dot1x-lab/freeradius && printf '%s\n' '${HOST_IP}' > /var/lib/dot1x-lab/freeradius/host-ip"
+  docker compose exec -T -e HOST_IP="${HOST_IP}" backend sh -c \
+    'mkdir -p /var/lib/dot1x-lab/freeradius && printf "%s\n" "$HOST_IP" > /var/lib/dot1x-lab/freeradius/host-ip'
   echo "Wrote host-ip file for RADIUS advertise auto-detect: ${HOST_IP}"
 fi
 

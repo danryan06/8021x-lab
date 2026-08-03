@@ -3,16 +3,20 @@
 set -euo pipefail
 
 detect() {
+  local found=""
   if command -v ip >/dev/null 2>&1; then
-    ip -4 route get 1.1.1.1 2>/dev/null \
-      | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}'
-    return 0
+    found="$(ip -4 route get 1.1.1.1 2>/dev/null \
+      | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')"
+    # Fall through to hostname -I when there is no default route (VPN-only
+    # hosts etc.) instead of returning empty here.
   fi
-  if command -v hostname >/dev/null 2>&1; then
-    hostname -I 2>/dev/null | awk '{print $1}'
-    return 0
+  if [[ -z "${found}" ]] && command -v hostname >/dev/null 2>&1; then
+    found="$(hostname -I 2>/dev/null | awk '{print $1}')"
   fi
-  return 1
+  if [[ -z "${found}" ]]; then
+    return 1
+  fi
+  echo "${found}"
 }
 
 IP="$(detect | head -n1 | tr -d '[:space:]')"

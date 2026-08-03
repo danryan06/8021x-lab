@@ -17,6 +17,7 @@ RUN apt-get update \
         openssl \
         postgresql-client \
         procps \
+        iproute2 \
         make \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /etc/freeradius/dot1x-lab /etc/freeradius/dot1x-lab-templates \
@@ -27,8 +28,10 @@ RUN apt-get update \
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY scripts/generate-eap-certs.sh /usr/local/bin/generate-eap-certs.sh
 COPY templates/ /etc/freeradius/dot1x-lab-templates/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/generate-eap-certs.sh \
-    && bash /usr/local/bin/generate-eap-certs.sh /etc/freeradius/3.0/certs \
+# Strict: a broken entrypoint/script copy must fail the build.
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/generate-eap-certs.sh
+# Best-effort only: the entrypoint regenerates EAP certs at container start.
+RUN bash /usr/local/bin/generate-eap-certs.sh /etc/freeradius/3.0/certs \
     && chown -R freerad:freerad /etc/freeradius/3.0/certs \
     && chmod 640 /etc/freeradius/3.0/certs/*.key \
     && chmod 644 /etc/freeradius/3.0/certs/*.pem /etc/freeradius/3.0/certs/*.crt \
