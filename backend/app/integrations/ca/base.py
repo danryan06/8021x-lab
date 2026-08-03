@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
@@ -31,4 +32,6 @@ class CertificateAuthorityAdapter(Protocol):
 
     def issue_client_cert(self, lab_id: UUID, identity: str, days: int = 365) -> IssuedCert: ...
 
-    def revoke(self, serial: str) -> None: ...
+    def revoke(self, lab_id: UUID, cert_ref: str) -> None: ...
+
+    def generate_crl(self, lab_id: UUID) -> Path: ...

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from app.integrations.ca.base import CaInfo, IssuedCert
@@ -25,7 +26,12 @@ class StepCaAdapter:
             "StepCaAdapter is not implemented yet. Use CA_ADAPTER=openssl for Phase 0/1."
         )
 
-    def revoke(self, serial: str) -> None:
+    def revoke(self, lab_id: UUID, cert_ref: str) -> None:
+        raise NotImplementedError(
+            "StepCaAdapter is not implemented yet. Use CA_ADAPTER=openssl for Phase 0/1."
+        )
+
+    def generate_crl(self, lab_id: UUID) -> Path:
         raise NotImplementedError(
             "StepCaAdapter is not implemented yet. Use CA_ADAPTER=openssl for Phase 0/1."
         )
