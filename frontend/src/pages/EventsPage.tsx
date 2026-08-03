@@ -114,7 +114,26 @@ export function EventsPage() {
                     <td className={`px-4 py-3 font-medium ${ok ? "text-signal" : "text-fail"}`}>
                       {ok ? "Accept" : "Reject"}
                     </td>
-                    <td className="px-4 py-3">{event.failure_reason || "—"}</td>
+                    <td className="px-4 py-3">
+                      {ok ? (
+                        "—"
+                      ) : event.failure_summary ? (
+                        <div>
+                          <p className="font-medium">{event.failure_summary}</p>
+                          {event.failure_hint && (
+                            <p className="mt-1 text-xs text-ink/60">{event.failure_hint}</p>
+                          )}
+                          {event.failure_reason &&
+                            event.failure_reason !== event.failure_summary && (
+                              <p className="mt-1 font-mono text-xs text-ink/45">
+                                {event.failure_reason}
+                              </p>
+                            )}
+                        </div>
+                      ) : (
+                        event.failure_reason || "—"
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs">{event.nas_ip || "—"}</td>
                   </tr>
                 );
