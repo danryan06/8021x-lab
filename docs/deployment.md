@@ -47,6 +47,16 @@ Not implemented yet:
 
 Design intent: same Compose stack under the hood; appliance UX should not require Docker knowledge.
 
+## EAP-TLS CRL enforcement
+
+Revoking a certificate always regenerates and publishes the lab CRL, but
+FreeRADIUS only *enforces* it during EAP-TLS when `FREERADIUS_ENFORCE_CRL=yes`
+is set on the freeradius service (default `no`). Enabling it requires a current
+CRL for every trusted lab CA, or client validation fails — so turn it on
+deliberately when you want to demonstrate revocation. See
+[concepts.md](concepts.md#revocation-and-the-crl).
+
 ## Security disclaimer
 
-This project is for **labs and education**. Default credentials, published DB ports, and simplified PKI are intentional for learning — not for production.
+This project is for **labs and education**. Default credentials, loopback-bound
+DB port, and simplified PKI are intentional for learning — not for production.

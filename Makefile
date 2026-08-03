@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed backend-shell frontend-shell ps bootstrap test-peap
+.PHONY: up down logs migrate seed backend-shell frontend-shell ps bootstrap test-peap lint test
 
 up:
 	docker compose up -d --build
@@ -29,3 +29,11 @@ bootstrap:
 
 test-peap:
 	./scripts/test-peap.sh
+
+# Local equivalents of the backend CI job (run from the repo root).
+# Uses `python3 -m` so it works whether or not the console scripts are on PATH.
+lint:
+	python3 -m ruff check backend
+
+test:
+	python3 -m pytest backend
