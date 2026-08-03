@@ -26,7 +26,8 @@ cp .env.example .env
 4. Confirm Accept/Reject and a live row under **Auth Events**.
 5. Toggle **Dark / Light** in the header anytime.
 
-See [docs/developer-setup.md](docs/developer-setup.md) for sync/reload details and optional `make test-peap`.
+**New to 802.1X?** Start with the [concepts guide](docs/concepts.md) (what/why)
+and the [usage guide](docs/usage.md) (step-by-step how-to).
 
 ## What this is
 
@@ -34,10 +35,11 @@ See [docs/developer-setup.md](docs/developer-setup.md) for sync/reload details a
 |---------|-----------------------------------|
 | Visual lab control plane | FreeRADIUS replacement |
 | Local users + PEAP/MSCHAPv2 | Active Directory / LDAP |
-| Basic EAP-TLS (lab CA + cert download + test) | Full enterprise PKI / CRL workflows |
-| RADIUS client sync into FreeRADIUS | Vendor switch/WLC generators |
-| Auth events from live FreeRADIUS | Production-hardened NAC |
-| Guided PEAP first-lab wizard | Cloud identity providers |
+| EAP-TLS with a lab CA: issue, download, revoke (CRL) | Enterprise PKI (intermediate CAs, HSM, ACME) |
+| Certificate inventory + revocation | Vendor switch/WLC generators |
+| RADIUS client sync into FreeRADIUS | Production-hardened NAC |
+| Auth events with plain-language failure explanations | Cloud identity providers |
+| Guided PEAP + EAP-TLS wizards | MAB / VLAN authorization policies (planned) |
 
 ## Stack
 
@@ -63,8 +65,10 @@ docker-compose.yml
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Developer setup](docs/developer-setup.md)
+- [Concepts](docs/concepts.md) — what 802.1X, RADIUS, PEAP/EAP-TLS, and certificates are, and why
+- [Usage guide](docs/usage.md) — step-by-step how-to for every feature
+- [Architecture](docs/architecture.md) — how the control plane, FreeRADIUS, and CA fit together
+- [Developer setup](docs/developer-setup.md) — install, commands, testing
 - [Deployment](docs/deployment.md)
 - [Roadmap](docs/roadmap.md)
 - [Contributing](CONTRIBUTING.md)
