@@ -93,6 +93,9 @@ services:
       # Single knob for the Docker-host catch-all client secret (must match
       # the backend's FREERADIUS_LAB_SECRET for UI eapol_test runs).
       FREERADIUS_LAB_SECRET: ${FREERADIUS_LAB_SECRET:-testing123}
+      # Enforce the published CRL for EAP-TLS (off by default; needs a current
+      # CRL for every trusted lab CA or client validation fails).
+      FREERADIUS_ENFORCE_CRL: ${FREERADIUS_ENFORCE_CRL:-no}
     ports:
       - "1812:1812/udp"
       - "1813:1813/udp"

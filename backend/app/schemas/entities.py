@@ -149,6 +149,9 @@ class AuthEventRead(BaseModel):
     failure_reason: str | None
     returned_attributes: dict
     nas_ip: str | None
+    # Friendly, derived explanation for failures (not stored; computed on read).
+    failure_summary: str | None = None
+    failure_hint: str | None = None
 
 
 class HealthComponent(BaseModel):

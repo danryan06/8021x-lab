@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # FreeRADIUS EAP server CA copied onto the shared runtime volume.
     freeradius_ca_path: str = "/var/lib/dot1x-lab/freeradius/certs/ca.pem"
     freeradius_health_max_age_seconds: int = 45
+    # When true, the FreeRADIUS entrypoint enforces the published CRL for
+    # EAP-TLS (check_crl). Off by default: enabling CRL checking requires a
+    # current CRL for every trusted lab CA or client validation fails.
+    freeradius_enforce_crl: bool = False
     # Advertised RADIUS target for real NAS/AP devices (DHCP/auto + manual override).
     radius_advertise_ip: str = ""
     radius_advertise_auth_port: int = 1812

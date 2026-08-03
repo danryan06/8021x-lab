@@ -88,15 +88,20 @@ The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and i
 `CertificateAuthorityAdapter` protocol:
 
 - `ensure_root(lab_id)`
-- `issue_client_cert(...)`
-- `revoke(serial)`
+- `issue_client_cert(lab_id, identity, days)`
+- `revoke(lab_id, cert_ref)`
+- `generate_crl(lab_id)`
 
 Adapters:
 
-- **openssl** (V1) — local PEM tree under `CA_DATA_DIR`
-- **step-ca** (stub) — reserved for Phase 2
+- **openssl** (V1) — local PEM tree under `CA_DATA_DIR`, backed by a per-lab
+  openssl CA database (`db/index.txt`, `db/newcerts/`, `serial`, `crlnumber`)
+  so certificates can be tracked, revoked, and listed in a CRL
+- **step-ca** (stub) — reserved for a later phase
 
-PEAP uses FreeRADIUS lab EAP server certificates generated in the FreeRADIUS image (`certs/bootstrap`), exported to the shared volume for UI `eapol_test`. Lab openssl CAs can be published into `trusted/ca-bundle.pem` for basic EAP-TLS client trust. Richer PKI UX / CRL remains Phase 2 polish.
+Issuance signs CSRs with `openssl ca` (not `x509 -req`) so each cert is recorded in the CA database. `revoke()` runs `openssl ca -revoke` and regenerates the CRL with `openssl ca -gencrl`. The CRL is published into `trusted/crl-bundle.pem`; FreeRADIUS only enforces it (adds `check_crl = yes` and loads the CRL alongside the CA certs) when `FREERADIUS_ENFORCE_CRL=yes`, because enabling CRL checking requires a current CRL for every trusted lab CA.
+
+PEAP uses FreeRADIUS lab EAP server certificates generated in the FreeRADIUS image (`certs/bootstrap`), exported to the shared volume for UI `eapol_test`. Lab openssl CAs are published into `trusted/ca-bundle.pem` for EAP-TLS client trust. The Certificates page surfaces the inventory (status, expiry, download, revoke).
 
 ## Out of scope (for now)
 

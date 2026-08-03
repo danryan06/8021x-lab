@@ -31,12 +31,13 @@
 
 ## Phase 2 — PKI polish
 
-- Dedicated Certificates / CA inventory page (list, revoke, download history)
-- Richer certificate inventory UI / CRL
-- Deeper TLS failure explanations (unknown CA, expired cert, …)
-- step-ca adapter beyond stub
+- Dedicated Certificates / CA inventory page: list, status, expiry, download, revoke (done)
+- Revocation + CRL generation via a per-lab openssl CA database (done); FreeRADIUS
+  CRL enforcement is opt-in via `FREERADIUS_ENFORCE_CRL`
+- TLS/PEAP failure explanations (unknown CA, expired, revoked, bad password) (done)
+- Remaining: step-ca adapter beyond stub, intermediate CAs, automatic expiry sweeps
 
-> **Note:** Basic lab CA already ships in Phase 1.5 (Wizard + Auth Test: ensure root, issue client cert, PEM/P12 download, FreeRADIUS trust). Phase 2 is the inventory/CRL polish — not a greenfield CA build.
+> **Note:** Basic lab CA already shipped in Phase 1.5 (Wizard + Auth Test: ensure root, issue client cert, PEM/P12 download, FreeRADIUS trust). Phase 2 adds the inventory, real revocation/CRL, and failure explanations.
 
 ## Phase 3 — MAB + policies
 

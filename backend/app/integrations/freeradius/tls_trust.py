@@ -59,3 +59,37 @@ def publish_lab_ca(lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> boo
     request_restart()
     logger.info("Published lab CA for lab_id=%s to %s (restart requested)", lab_id, bundle_path)
     return True
+
+
+def publish_lab_crl(lab_id: UUID) -> bool:
+    """(Re)generate the lab CRL and refresh the published CRL bundle.
+
+    Returns True when the CRL bundle changed and a FreeRADIUS restart was
+    requested. The CRL is always published; whether FreeRADIUS enforces it is
+    controlled by FREERADIUS_ENFORCE_CRL in the freeradius container.
+    """
+    adapter = get_ca_adapter()
+    generate_crl = getattr(adapter, "generate_crl", None)
+    if generate_crl is None:
+        raise NotImplementedError("Active CA adapter does not support CRL generation")
+    crl_src = Path(str(generate_crl(lab_id)))
+    if not crl_src.exists():
+        raise FileNotFoundError(f"Lab CRL missing at {crl_src}")
+
+    out_crl = trusted_dir() / f"crl-lab-{lab_id}.pem"
+    out_crl.write_text(crl_src.read_text(encoding="utf-8"), encoding="utf-8")
+
+    bundle_parts = [
+        pem.read_text(encoding="utf-8").strip() for pem in sorted(trusted_dir().glob("crl-lab-*.pem"))
+    ]
+    bundle_path = trusted_dir() / "crl-bundle.pem"
+    new_bundle = "\n".join(p for p in bundle_parts if p) + "\n"
+    if bundle_path.exists() and bundle_path.read_text(encoding="utf-8") == new_bundle:
+        logger.info("Lab CRL for lab_id=%s already current at %s (no restart)", lab_id, bundle_path)
+        return False
+
+    bundle_path.write_text(new_bundle, encoding="utf-8")
+    (trusted_dir() / "updated.flag").write_text("updated\n", encoding="utf-8")
+    request_restart()
+    logger.info("Published lab CRL for lab_id=%s to %s (restart requested)", lab_id, bundle_path)
+    return True

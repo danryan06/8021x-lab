@@ -138,7 +138,40 @@ export type AuthEvent = {
   method: string;
   result: string;
   failure_reason: string | null;
+  failure_summary: string | null;
+  failure_hint: string | null;
   nas_ip: string | null;
+};
+
+export type Certificate = {
+  id: string;
+  lab_id: string;
+  subject: string;
+  issuer: string | null;
+  serial: string | null;
+  cert_type: string;
+  status: string;
+  not_before: string | null;
+  not_after: string | null;
+  created_at: string;
+  identity: string | null;
+  download_bundle: string | null;
+  download_p12: string | null;
+};
+
+export type CertificateAuthorityInfo = {
+  id: string;
+  name: string;
+  subject: string;
+  adapter: string;
+  created_at: string;
+};
+
+export type CertificateInventory = {
+  authority: CertificateAuthorityInfo | null;
+  crl_available: boolean;
+  crl_enforced: boolean;
+  certificates: Certificate[];
 };
 
 export type HealthResponse = {
