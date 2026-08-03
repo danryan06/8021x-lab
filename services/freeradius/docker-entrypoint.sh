@@ -125,11 +125,26 @@ configure_eap_certs() {
 	if [[ ! -f "${CA_FILE}" ]]; then
 		CA_FILE="${CERT_DIR}/ca.pem"
 	fi
+
+	# Optional CRL enforcement (off by default). When enabled and a published
+	# CRL bundle exists, OpenSSL needs the CRL loaded alongside the CA certs, so
+	# we hand FreeRADIUS a combined ca_file and flip check_crl on.
+	CRL_BUNDLE="${RUNTIME_DIR}/trusted/crl-bundle.pem"
+	CHECK_CRL="no"
+	if [[ "${FREERADIUS_ENFORCE_CRL:-no}" == "yes" && -s "${CRL_BUNDLE}" ]]; then
+		COMBINED="${RUNTIME_DIR}/trusted/ca-with-crl.pem"
+		cat "${CA_FILE}" "${CRL_BUNDLE}" >"${COMBINED}"
+		CA_FILE="${COMBINED}"
+		CHECK_CRL="yes"
+		echo "CRL enforcement enabled (check_crl=yes) using ${CRL_BUNDLE}"
+	fi
+
 	sed -i \
 		-e "s|^[[:space:]]*private_key_password = .*|${KEY_PASS_LINE}|" \
 		-e "s|^[[:space:]]*private_key_file = .*|		private_key_file = ${CERT_DIR}/server.key|" \
 		-e "s|^[[:space:]]*certificate_file = .*|		certificate_file = ${CERT_DIR}/server.pem|" \
 		-e "s|^[[:space:]]*ca_file = .*|		ca_file = ${CA_FILE}|" \
+		-e "s|^\([[:space:]]*\)#\?[[:space:]]*check_crl = .*|\1check_crl = ${CHECK_CRL}|" \
 		"${EAP_MOD}"
 	# Keep PEAP as default; EAP-TLS is selected by the client.
 	sed -i 's/^[[:space:]]*default_eap_type = .*/	default_eap_type = peap/' "${EAP_MOD}" || true
