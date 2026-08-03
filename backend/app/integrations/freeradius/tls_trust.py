@@ -20,8 +20,12 @@ def trusted_dir() -> Path:
     return path
 
 
-def publish_lab_ca(lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> Path:
-    """Ensure lab root exists and write/update the FreeRADIUS client-trust CA bundle."""
+def publish_lab_ca(lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> bool:
+    """Ensure lab root exists and write/update the FreeRADIUS client-trust CA bundle.
+
+    Returns True when the bundle changed and a FreeRADIUS restart was requested,
+    False when the published trust material was already current.
+    """
     adapter = get_ca_adapter()
     info = adapter.ensure_root(lab_id, common_name)
     root_path = Path(info.storage_ref)
@@ -40,10 +44,18 @@ def publish_lab_ca(lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> Pat
     for pem in sorted(trusted_dir().glob("lab-*.pem")):
         bundle_parts.append(pem.read_text(encoding="utf-8").strip())
     bundle_path = trusted_dir() / "ca-bundle.pem"
-    bundle_path.write_text("\n".join(p for p in bundle_parts if p) + "\n", encoding="utf-8")
+    new_bundle = "\n".join(p for p in bundle_parts if p) + "\n"
 
+    # Only bounce FreeRADIUS when the trust bundle actually changed — a restart
+    # is a several-second auth outage, and sync is called repeatedly as a no-op.
+    unchanged = bundle_path.exists() and bundle_path.read_text(encoding="utf-8") == new_bundle
+    if unchanged:
+        logger.info("Lab CA for lab_id=%s already published to %s (no restart)", lab_id, bundle_path)
+        return False
+
+    bundle_path.write_text(new_bundle, encoding="utf-8")
     # Flag for entrypoint / operator visibility; ca_file changes need a full restart.
     (trusted_dir() / "updated.flag").write_text("updated\n", encoding="utf-8")
     request_restart()
     logger.info("Published lab CA for lab_id=%s to %s (restart requested)", lab_id, bundle_path)
-    return bundle_path
+    return True

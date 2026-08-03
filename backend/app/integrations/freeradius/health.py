@@ -46,28 +46,28 @@ def freeradius_health_detail() -> tuple[str, str]:
 
     host = settings.freeradius_host
     port = settings.freeradius_auth_port
-    udp_ok = _udp_reachable(host, port)
-    parts.append(f"udp={host}:{port}:{'ok' if udp_ok else 'unreachable'}")
+    resolvable = _host_resolvable(host)
+    parts.append(f"target={host}:{port}:{'resolvable' if resolvable else 'unresolvable'}")
 
+    # The heartbeat file written by the FreeRADIUS entrypoint is the authoritative
+    # liveness signal. A UDP sendto() "probe" always succeeds on a connectionless
+    # socket regardless of whether anything is listening, so it must never be
+    # allowed to upgrade the status.
     detail = "; ".join(parts)
-    if heartbeat_ok and udp_ok:
-        return "ok", detail
-    if heartbeat_ok or udp_ok:
+    if heartbeat_ok:
+        return ("ok", detail) if resolvable else ("degraded", detail)
+    if status_path.exists():
+        # Heartbeat present but stale — the container stopped updating it.
         return "degraded", detail
     if clients_path.exists():
         return "configured", detail
     return "error", detail
 
 
-def _udp_reachable(host: str, port: int, timeout: float = 1.5) -> bool:
-    """Best-effort UDP reachability check (send empty datagram)."""
+def _host_resolvable(host: str) -> bool:
+    """Informational DNS/addressing check for the configured RADIUS target."""
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(timeout)
-        try:
-            sock.sendto(b"\x00", (host, port))
-            return True
-        finally:
-            sock.close()
+        socket.getaddrinfo(host, None, family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        return True
     except OSError:
         return False

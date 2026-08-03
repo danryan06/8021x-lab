@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import os
 import re
 import socket
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +33,8 @@ def _is_dockerish(iface: str | None, ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return False
-    # Common Docker / Compose bridge pools.
-    for net in ("172.16.0.0/12", "192.168.0.0/16"):
-        # 192.168/16 is also common on LANs — only treat 172.16/12 as docker-likely by default.
-        _ = net
-    if addr in ipaddress.ip_network("172.16.0.0/12"):
-        return True
-    return False
+    # 192.168/16 is also common on LANs — only treat 172.16/12 as docker-likely.
+    return addr in ipaddress.ip_network("172.16.0.0/12")
 
 
 def _from_ip_cmd() -> list[AddressCandidate]:
@@ -127,8 +123,10 @@ def _from_host_ip_file(path: str) -> AddressCandidate | None:
     )
 
 
-def _from_env(var_name: str = "RADIUS_ADVERTISE_IP") -> AddressCandidate | None:
-    raw = (os.environ.get(var_name) or "").strip()
+def _from_env() -> AddressCandidate | None:
+    # Read via Settings so a value in .env works for non-Docker runs too
+    # (pydantic-settings loads .env without exporting to os.environ).
+    raw = (get_settings().radius_advertise_ip or "").strip()
     if not raw:
         return None
     try:

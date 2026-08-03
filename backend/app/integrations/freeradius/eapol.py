@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import get_settings
+from app.validation import validate_eapol_config_value
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -77,6 +78,8 @@ def run_peap_test(
     shared_secret: str | None = None,
     timeout_seconds: int = 30,
 ) -> EapolResult:
+    validate_eapol_config_value("identity", identity)
+    validate_eapol_config_value("password", password)
     host = resolve_radius_host(radius_host or settings.freeradius_host)
     port = radius_port or settings.freeradius_auth_port
     secret = shared_secret or settings.freeradius_lab_secret
@@ -126,6 +129,7 @@ def run_eap_tls_test(
     shared_secret: str | None = None,
     timeout_seconds: int = 45,
 ) -> EapolResult:
+    validate_eapol_config_value("identity", identity)
     host = resolve_radius_host(radius_host or settings.freeradius_host)
     port = radius_port or settings.freeradius_auth_port
     secret = shared_secret or settings.freeradius_lab_secret
@@ -221,7 +225,9 @@ def _run_eapol(
         )
 
     output = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
-    success = proc.returncode == 0 or "SUCCESS" in output
+    # eapol_test exits 0 only when every requested round succeeded; the exit code
+    # is authoritative (a bare "SUCCESS" substring can appear in debug output).
+    success = proc.returncode == 0
     failure_reason = None
     if not success:
         failure_reason = _infer_failure(output) or f"eapol_test exit={proc.returncode}"

@@ -20,6 +20,7 @@ from app.integrations.freeradius.eapol import resolve_radius_host, run_eap_tls_t
 from app.integrations.freeradius.tls_trust import publish_lab_ca
 from app.models.entities import AuthenticationEvent, AuthMethod, RadiusUser, UserStatus
 from app.schemas.entities import AuthEventRead
+from app.validation import IDENTITY_PATTERN, validate_identity
 
 router = APIRouter(prefix="/auth-tests", tags=["auth-tests"])
 settings = get_settings()
@@ -35,7 +36,9 @@ class AuthTestRequest(BaseModel):
     # When true, use an intentionally wrong password (negative PEAP test).
     wrong_password: bool = False
     # For EAP-TLS: identity whose cert was issued under the lab CA.
-    cert_identity: str | None = Field(default=None, min_length=1, max_length=128)
+    cert_identity: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=IDENTITY_PATTERN
+    )
 
 
 class AuthTestContext(BaseModel):
@@ -87,6 +90,7 @@ def run_auth_test(
 ) -> AuthTestResponse:
     method = payload.method
     expect_reject = payload.expect_reject or payload.wrong_password
+    test_started = time.time()
 
     if method == "peap":
         user = _resolve_user(db, payload)
@@ -102,6 +106,8 @@ def run_auth_test(
             password = payload.password
         try:
             eapol = run_peap_test(identity, password)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except FileNotFoundError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
@@ -111,6 +117,10 @@ def run_auth_test(
         if not identity:
             user = _resolve_user(db, payload)
             identity = user.username
+        try:
+            validate_identity(identity)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         adapter = get_ca_adapter()
         # Ensure material exists; issue if missing.
         lab_dir = Path(settings.ca_data_dir) / str(payload.lab_id)
@@ -125,11 +135,14 @@ def run_auth_test(
                     status_code=500, detail=f"Failed to issue client certificate: {exc}"
                 ) from exc
         # Publish lab CA into FreeRADIUS trust store before testing.
-        publish_lab_ca(payload.lab_id)
-        # Wait for FreeRADIUS restart (ca_file trust updates need a full restart).
-        time.sleep(6.0)
+        restart_requested = publish_lab_ca(payload.lab_id)
+        if restart_requested:
+            # Wait for FreeRADIUS restart (ca_file trust updates need a full restart).
+            time.sleep(6.0)
         try:
             eapol = run_eap_tls_test(identity, cert_path, key_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except FileNotFoundError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
@@ -137,7 +150,9 @@ def run_auth_test(
                 status_code=500, detail=f"EAP-TLS test failed to start: {exc}"
             ) from exc
 
-    event = _wait_for_event(db, identity=identity, method=method, timeout=8.0)
+    event = _wait_for_event(
+        db, identity=identity, method=method, timeout=8.0, started_at=test_started
+    )
     actual_success = eapol.success
     matched = (not actual_success) if expect_reject else actual_success
     result = "success" if actual_success else "failure"
@@ -192,11 +207,18 @@ def _wait_for_event(
     identity: str,
     method: str,
     timeout: float,
+    started_at: float,
 ) -> AuthenticationEvent | None:
-    """Poll briefly for the linelog-ingested event matching this test."""
+    """Poll briefly for the linelog-ingested event matching this test.
+
+    Only events with a timestamp at or after the test start are considered, so a
+    stale event from an earlier test (or an unrelated real auth) for the same
+    identity is never attributed to this run. Linelog timestamps have one-second
+    resolution, so allow 2s of clock slack.
+    """
     deadline = time.monotonic() + timeout
     method_enum = AuthMethod.peap if method == "peap" else AuthMethod.eap_tls
-    latest: AuthenticationEvent | None = None
+    earliest_ts = started_at - 2.0
     while time.monotonic() < deadline:
         db.expire_all()
         latest = db.scalar(
@@ -205,10 +227,11 @@ def _wait_for_event(
             .order_by(AuthenticationEvent.timestamp.desc())
             .limit(1)
         )
-        if latest and latest.method in {method_enum, AuthMethod.unknown}:
-            # Prefer a very recent event (within the wait window).
-            age = time.time() - latest.timestamp.timestamp()
-            if age <= timeout + 5:
-                return latest
+        if (
+            latest
+            and latest.method in {method_enum, AuthMethod.unknown}
+            and latest.timestamp.timestamp() >= earliest_ts
+        ):
+            return latest
         time.sleep(0.4)
-    return latest
+    return None

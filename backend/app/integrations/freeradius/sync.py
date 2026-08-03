@@ -57,10 +57,14 @@ def write_runtime_file(relative_name: str, content: str) -> Path:
 
 
 def request_reload() -> None:
-    """Ask the FreeRADIUS container to reload clients/config.
+    """Ask the FreeRADIUS container to HUP-reload modules/virtual servers.
 
     Primary mechanism: touch `reload.request` on the shared runtime volume.
     The FreeRADIUS entrypoint watcher runs `radmin hup` / SIGHUP.
+
+    NOTE: FreeRADIUS 3.x does NOT re-read clients.conf (or its $INCLUDEs) on
+    HUP — client changes require `request_restart()`. Keep this only for
+    module-level config that HUP does honor.
     Optional: FREERADIUS_RELOAD_COMMAND for alternate environments.
     """
     runtime = Path(settings.freeradius_config_dir)
@@ -100,6 +104,8 @@ def sync_radius_clients(db: Session, lab_id: UUID) -> Path:
         ).all()
     )
     content = render_clients_config(clients)
+    clients_path = Path(settings.freeradius_config_dir) / "clients.dot1x.conf"
+    changed = not clients_path.exists() or clients_path.read_text(encoding="utf-8") != content
     path = write_runtime_file("clients.dot1x.conf", content)
 
     # Rebuild FreeRADIUS `nas` rows for this lab (rlm_sql read_clients = yes).
@@ -108,8 +114,16 @@ def sync_radius_clients(db: Session, lab_id: UUID) -> Path:
     for client in clients:
         sync_client_to_nas(db, client)
 
-    request_reload()
-    logger.info("Synced %s RADIUS clients to %s (+ nas)", len(clients), path)
+    # FreeRADIUS 3.x only reads clients.conf at startup (HUP does not re-read
+    # clients), so client changes need a controlled restart to take effect.
+    if changed:
+        request_restart()
+    logger.info(
+        "Synced %s RADIUS clients to %s (+ nas)%s",
+        len(clients),
+        path,
+        " — restart requested" if changed else " — unchanged, no restart",
+    )
     return path
 
 

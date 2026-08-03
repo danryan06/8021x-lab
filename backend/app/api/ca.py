@@ -23,6 +23,7 @@ from app.models.entities import (
     CertStatus,
     CertType,
 )
+from app.validation import IDENTITY_PATTERN
 
 router = APIRouter(prefix="/ca", tags=["certificate-authority"])
 
@@ -34,7 +35,7 @@ class EnsureRootRequest(BaseModel):
 
 class IssueCertRequest(BaseModel):
     lab_id: UUID
-    identity: str = Field(min_length=1, max_length=128)
+    identity: str = Field(min_length=1, max_length=128, pattern=IDENTITY_PATTERN)
     days: int = Field(default=365, ge=1, le=3650)
 
 
@@ -150,7 +151,7 @@ def download_root_pem(
 @router.get("/client.p12")
 def download_client_p12(
     lab_id: UUID = Query(...),
-    identity: str = Query(..., min_length=1, max_length=128),
+    identity: str = Query(..., min_length=1, max_length=128, pattern=IDENTITY_PATTERN),
     _admin=Depends(get_current_admin),
 ) -> Response:
     adapter = _adapter()
@@ -170,7 +171,7 @@ def download_client_p12(
 @router.get("/client-bundle")
 def download_client_bundle(
     lab_id: UUID = Query(...),
-    identity: str = Query(..., min_length=1, max_length=128),
+    identity: str = Query(..., min_length=1, max_length=128, pattern=IDENTITY_PATTERN),
     _admin=Depends(get_current_admin),
 ) -> StreamingResponse:
     adapter = _adapter()

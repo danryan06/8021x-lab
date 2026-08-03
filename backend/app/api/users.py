@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -68,7 +69,8 @@ async def import_users_csv(
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded") from exc
     try:
-        return user_service.import_users_csv(db, lab_id, content)
+        # bcrypt/NT hashing per row is CPU-heavy; keep it off the event loop.
+        return await run_in_threadpool(user_service.import_users_csv, db, lab_id, content)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

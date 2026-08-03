@@ -13,7 +13,7 @@ from app.api.deps import get_current_admin
 from app.db import get_db
 from app.integrations.freeradius.health import freeradius_health_detail
 from app.integrations.freeradius.sql_sync import sync_all_users
-from app.integrations.freeradius.sync import bootstrap_radius_runtime, request_reload, sync_radius_clients
+from app.integrations.freeradius.sync import bootstrap_radius_runtime, sync_radius_clients
 from app.integrations.freeradius.tls_trust import publish_lab_ca
 from app.models.entities import Lab, RadiusClient
 
@@ -67,12 +67,14 @@ def sync_freeradius(
                 publish_lab_ca(lid)
             except Exception:
                 pass
-        request_reload()
 
     return SyncResponse(
         users_synced=users,
         clients_synced=clients,
         reload_requested=True,
         lab_ids=lab_ids,
-        detail="Synced users to radcheck, clients to clients.dot1x.conf/nas, reload requested",
+        detail=(
+            "Synced users to radcheck and clients to clients.dot1x.conf/nas; "
+            "FreeRADIUS restarts automatically when client or trust config changed"
+        ),
     )

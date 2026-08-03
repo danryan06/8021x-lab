@@ -9,6 +9,7 @@ from uuid import UUID
 
 from app.config import get_settings
 from app.integrations.ca.base import CaInfo, IssuedCert
+from app.validation import validate_identity
 
 settings = get_settings()
 
@@ -28,13 +29,13 @@ class OpenSslLocalCaAdapter:
         return self._lab_dir(lab_id) / "private" / "root.key"
 
     def client_cert_path(self, lab_id: UUID, identity: str) -> Path:
-        return self._lab_dir(lab_id) / "certs" / f"{identity}.crt"
+        return self._lab_dir(lab_id) / "certs" / f"{validate_identity(identity)}.crt"
 
     def client_key_path(self, lab_id: UUID, identity: str) -> Path:
-        return self._lab_dir(lab_id) / "private" / f"{identity}.key"
+        return self._lab_dir(lab_id) / "private" / f"{validate_identity(identity)}.key"
 
     def client_p12_path(self, lab_id: UUID, identity: str) -> Path:
-        return self._lab_dir(lab_id) / "certs" / f"{identity}.p12"
+        return self._lab_dir(lab_id) / "certs" / f"{validate_identity(identity)}.p12"
 
     def ensure_root(self, lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> CaInfo:
         lab_dir = self._lab_dir(lab_id)
@@ -73,6 +74,7 @@ class OpenSslLocalCaAdapter:
         )
 
     def issue_client_cert(self, lab_id: UUID, identity: str, days: int = 365) -> IssuedCert:
+        validate_identity(identity)
         self.ensure_root(lab_id)
         lab_dir = self._lab_dir(lab_id)
         key_path = lab_dir / "private" / f"{identity}.key"
