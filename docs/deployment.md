@@ -1,8 +1,14 @@
 # Deployment
 
+> Setting up on a fresh machine or new to Docker? The
+> [installation guide](installation.md) is a step-by-step walkthrough
+> (installing Docker/Git, cloning, first login, Raspberry Pi). This page is the
+> condensed reference for operators who already know Docker Compose.
+
 ## Primary: Docker Compose
 
 ```bash
+git clone https://github.com/danryan06/8021x-lab.git && cd 8021x-lab
 cp .env.example .env
 # Edit secrets before any non-lab use
 docker compose up -d
@@ -36,14 +42,22 @@ On Docker Desktop (macOS/Windows), published ports map to the host — use the h
 > with per-NAS secrets needs a Linux Docker host (where published-port UDP
 > preserves the source IP). UI-driven `eapol_test` runs are unaffected.
 
+## Running on Linux hosts and Raspberry Pi
+
+The Compose stack runs on any 64-bit Linux host, including a Raspberry Pi 4/5 on
+64-bit Raspberry Pi OS or Ubuntu — see the
+[installation guide](installation.md#raspberry-pi-notes). A Linux host (unlike
+Docker Desktop) preserves the RADIUS source IP, so it's the better choice for
+testing real switches/APs.
+
 ## Future appliance targets
 
-Not implemented yet:
+Prebuilt, Docker-free appliance packaging is **not implemented yet**:
 
 - Ubuntu Server LTS VM / OVA
 - Proxmox VM template
-- Raspberry Pi image
-- Bare metal Linux
+- Raspberry Pi image (prebuilt)
+- Bare metal Linux installer
 
 Design intent: same Compose stack under the hood; appliance UX should not require Docker knowledge.
 

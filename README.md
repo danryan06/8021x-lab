@@ -8,7 +8,11 @@ The easiest way for Wi-Fi and network engineers to learn, test, and demonstrate 
 
 ## Quick start
 
+Already have Docker + Git and just want it running:
+
 ```bash
+git clone https://github.com/danryan06/8021x-lab.git
+cd 8021x-lab
 cp .env.example .env
 ./scripts/bootstrap.sh
 # or: make bootstrap
@@ -17,6 +21,10 @@ cp .env.example .env
 - **UI:** http://localhost:3000  
 - **API docs:** http://localhost:8000/docs  
 - **Default admin:** values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
+
+**Starting from a fresh machine (or a Raspberry Pi)?** Follow the
+[step-by-step installation guide](docs/installation.md) — it covers installing
+Docker and Git from scratch, cloning the repo, and first login.
 
 ### Test authentication from the UI
 
@@ -65,6 +73,7 @@ docker-compose.yml
 
 ## Documentation
 
+- [Installation](docs/installation.md) — from-scratch setup (Docker, Git, clone, first login), incl. Raspberry Pi
 - [Concepts](docs/concepts.md) — what 802.1X, RADIUS, PEAP/EAP-TLS, and certificates are, and why
 - [Usage guide](docs/usage.md) — step-by-step how-to for every feature
 - [Architecture](docs/architecture.md) — how the control plane, FreeRADIUS, and CA fit together

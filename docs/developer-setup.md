@@ -1,8 +1,10 @@
 # Developer setup
 
-This page covers installing, running, and testing the stack. If you're here to
-*learn or use* the tool rather than develop it, start with the
-[concepts guide](concepts.md) and the [usage guide](usage.md).
+This page is the developer/operator reference (commands, testing, running
+outside Compose). If you're setting up on a **fresh machine** and want a
+from-scratch walkthrough (installing Docker/Git, cloning the repo, first login,
+Raspberry Pi notes), use the [installation guide](installation.md) instead. To
+*learn or use* the tool, see the [concepts](concepts.md) and [usage](usage.md) guides.
 
 ## Prerequisites
 
