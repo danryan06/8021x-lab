@@ -28,8 +28,9 @@ The header has two global controls used throughout:
 
 ## Guide: your first PEAP login (password-based)
 
-The fastest way to see 802.1X work end to end. The **Wizard** automates it, or
-do it by hand:
+The fastest way to see 802.1X work end to end. The **Wizard** automates it (hover
+or tab to the **ⓘ** next to any step for a fly-out explaining what that step does,
+what it configures, and what comes next), or do it by hand:
 
 1. **Create a user.** Go to **Users → Add user**, set a username and password
    (optionally first/last/department). Saving syncs the user's NT-Password into
