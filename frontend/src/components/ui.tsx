@@ -1,5 +1,37 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
+/**
+ * Small "i" affordance that reveals a fly-out on hover *and* keyboard focus.
+ * Accessible: the trigger is a real button, the panel is role="tooltip", and
+ * `group-focus-within` keeps it open for keyboard/touch users. The panel is a
+ * DOM descendant of the group, so hovering the panel itself keeps it open.
+ */
+export function InfoTip({
+  label = "More information",
+  children,
+}: {
+  label?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className="group relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-ink/40 text-[10px] font-bold leading-none text-ink/60 transition hover:border-signal hover:text-signal focus:outline-none focus-visible:ring-2 focus-visible:ring-signal"
+      >
+        i
+      </button>
+      <span
+        role="tooltip"
+        className="invisible absolute left-0 top-6 z-30 w-72 max-w-[80vw] rounded border border-ink/15 bg-panel p-3 text-left text-xs font-normal leading-relaxed text-ink/80 opacity-0 shadow-soft transition duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+      >
+        {children}
+      </span>
+    </span>
+  );
+}
+
 export function PageHeader({
   title,
   subtitle,
