@@ -60,10 +60,26 @@
 - Remaining: per-endpoint MAB session controls (CoA / Disconnect-Request),
   time-of-day and NAS-scoped policy conditions
 
-## Phase 4 — Wizard expansions
+## Phase 4 — Wizard expansions (done)
 
-- Additional guided flows (wireless-specific) beyond the PEAP / EAP-TLS / MAB
-  first-lab paths
+- **Guided wireless path**: choosing *wireless* reshapes the flow around an SSID
+  — name it (with 802.11's 32-octet limit enforced as you type), pick
+  WPA2/WPA3-Enterprise, and finish on a checklist carrying every value the AP or
+  WLC asks for, built from what the run actually created
+- **Dynamic VLAN assignment** for wireless PEAP: a policy bound to the wizard's
+  user group, so one SSID can place clients in a VLAN via `radgroupreply` —
+  proven by the returned attributes on the live test
+- Wireless copy throughout: the RADIUS client step asks for the controller's
+  source address rather than a switch's, and the client step can be skipped
+  (in-Compose tests do not need a NAS client)
+- A lab now carries a validated **wireless profile** (`settings.wireless_profile`),
+  so the SSID, security mode, and VLAN survive the run
+- Robustness found by running the flows: two RADIUS clients can no longer claim
+  one address (which made FreeRADIUS refuse to start), the clients file covers
+  every lab instead of only the one being synced, and a duplicate lab name is
+  explained instead of returning a 500
+- Remaining: guest/captive-portal flows, per-SSID RADIUS clients on the
+  Dashboard, and a wired-and-wireless ("both") variant of the checklist
 
 ## Phase 5 — Appliance packaging
 

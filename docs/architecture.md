@@ -58,6 +58,13 @@ Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL table
 3. If the rendered file changed, backend writes `restart.request` on the shared volume.
 4. The FreeRADIUS entrypoint supervisor performs a controlled in-container restart.
 
+One FreeRADIUS instance serves every lab from that one file, so the render is
+always **all** clients, not the lab being synced — and it emits **one client per
+address**. FreeRADIUS matches a request to a client by source address and aborts
+startup if two blocks claim the same one, which would stop authentication for
+every lab, so duplicates are rejected when a client is created and collapsed
+again at render time for rows that predate the rule.
+
 A **full restart** (not HUP) is required because FreeRADIUS 3.x only reads
 `clients.conf` (and its `$INCLUDE`s) at startup — SIGHUP/`radmin hup` reloads
 modules and virtual servers but explicitly not clients. The `reload.request`
@@ -156,6 +163,23 @@ matched — so the worker looks the MAC up in `endpoints` and records whether it
 an unknown MAC or a disabled endpoint.
 
 The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and inserts into `authentication_events`. Catch-all `lab-docker-host-N` clients scoped to the container's own Docker bridge subnets (secret `FREERADIUS_LAB_SECRET`, default `testing123`) accept RADIUS from Compose published ports on the Docker host; real NAS devices need per-NAS clients created in the UI.
+
+## Wireless labs (Phase 4)
+
+A lab's `settings` column is free-form, but a wireless lab stores a validated
+**wireless profile** under `settings.wireless_profile`: the SSID, the security
+mode (`wpa2_enterprise` / `wpa3_enterprise`), the VLAN its policy hands out, and
+the user group that policy is bound to. It is validated on the way in — an SSID
+must fit 802.11's 32-**octet** element and carry no control characters — because
+these values are copied straight onto real radio hardware.
+`PUT /labs/{id}/wireless-profile` merges the profile into the settings document
+rather than replacing it, so recording an SSID cannot drop a lab's pinned RADIUS
+target.
+
+Nothing about the data plane changes for wireless: the AP/WLC is a RADIUS client
+like any switch, and per-user VLANs come from an authorization policy bound to a
+user group (`radgroupreply`), which is what lets one SSID place clients in
+different VLANs.
 
 ## CA integration seam
 

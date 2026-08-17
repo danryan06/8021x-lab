@@ -217,6 +217,39 @@ authentication records the attributes that were actually returned, and the Event
 page shows them — so you can confirm the switch really received `VLAN 40` rather
 than assuming it did.
 
+## Wireless: the same 802.1X, with the AP as the authenticator
+
+Nothing about RADIUS changes on Wi-Fi. The access point or wireless LAN
+controller plays the role the switch plays on a wired port: it blocks traffic
+until the client authenticates, relays EAP to the lab, and applies whatever the
+Access-Accept says. The parts that *are* wireless-specific are worth knowing:
+
+- **The SSID is where 802.1X is switched on.** A network advertised as
+  **WPA2-Enterprise** or **WPA3-Enterprise** uses 802.1X/EAP; the "Personal"
+  variants use a shared passphrase and never talk to RADIUS. WPA3-Enterprise
+  additionally requires protected management frames (802.11w) and newer clients,
+  but from RADIUS's point of view the two are identical.
+- **The SSID name has a hard limit.** 802.11 carries it in a 32-octet field, so
+  a name is capped at 32 *bytes* — accented or emoji characters cost more than
+  one byte each.
+- **One SSID can serve many VLANs.** This is the usual reason to build a
+  wireless lab: instead of one SSID per department, every client joins the same
+  network and the Access-Accept says which VLAN it lands in. In the lab that is
+  an authorization policy bound to a **user group** — staff land in one VLAN,
+  contractors in another, from a single SSID. The controller must have those
+  VLANs and have AAA override (dynamic VLAN assignment) enabled, or it will
+  authenticate everyone and ignore the VLAN.
+- **The controller is the RADIUS client, not each AP.** Most controller-based
+  deployments source RADIUS from the controller's management interface, so that
+  is the address to register — registering individual APs is what people usually
+  get wrong first.
+- **MAB exists on wireless too**, as MAC filtering on an open or PSK SSID for
+  devices with no supplicant. It is the same weak trust model as wired MAB.
+
+The **Wizard → wireless** path walks all of this: name the SSID, create an
+identity, give it a VLAN, register the controller, run a live test, and finish
+with the exact values to type into the AP/WLC.
+
 ## Authentication events: seeing what happened
 
 Every accept/reject decision FreeRADIUS makes is captured as an
