@@ -64,6 +64,21 @@ _RULES: list[tuple[str, FailureExplanation]] = [
         ),
     ),
     (
+        "unknown mac",
+        FailureExplanation(
+            "MAC address is not registered for MAB",
+            "Add the endpoint on the Endpoints page (its MAC syncs to FreeRADIUS "
+            "immediately), or check that the NAS is sending the MAC you expect.",
+        ),
+    ),
+    (
+        "endpoint is disabled",
+        FailureExplanation(
+            "Endpoint is registered but disabled",
+            "Enable the endpoint on the Endpoints page to authorize this MAC again.",
+        ),
+    ),
+    (
         "mschap",
         FailureExplanation(
             "PEAP/MSCHAPv2 password rejected",
@@ -120,6 +135,12 @@ def explain_failure(
             return FailureExplanation(
                 "PEAP authentication was rejected",
                 "Verify the username/password and that the user is synced to FreeRADIUS.",
+            )
+        if method == AuthMethod.mab:
+            return FailureExplanation(
+                "MAB was rejected",
+                "Register this MAC as an endpoint (and keep it enabled) so FreeRADIUS "
+                "has something to authorize for the MAC lookup.",
             )
         return FailureExplanation(
             "Authentication was rejected",

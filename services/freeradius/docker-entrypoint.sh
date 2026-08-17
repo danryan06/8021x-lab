@@ -222,6 +222,31 @@ ensure_linelog() {
 # ingestion worker would surface as duplicate events in the UI.
 ensure_linelog "${FR_DIR}/sites-enabled/default"
 
+# The stock authorize section runs `eap { ok = return }` *before* `-sql`, so any
+# EAP request returns from authorize before the SQL group lookup happens — and a
+# user group's radgroupreply rows (an authorization policy's VLAN / Filter-Id)
+# never load. Hoisting -sql above eap lets PEAP and EAP-TLS return the same
+# authorization attributes MAB already gets from radreply.
+ensure_authz_before_eap() {
+	local site="$1"
+	if grep -q 'dot1x-lab: authorization before EAP' "${site}"; then
+		return 0
+	fi
+	awk '
+		/^[[:space:]]*eap[[:space:]]*\{/ && !moved {
+			print "\t# dot1x-lab: authorization before EAP (radgroupreply must load"
+			print "\t# before eap short-circuits authorize with \"ok = return\")."
+			print "\t-sql"
+			print
+			moved = 1
+			next
+		}
+		/^[[:space:]]*-sql[[:space:]]*$/ && moved && !removed { removed = 1; next }
+		{ print }
+	' "${site}" >"${site}.dot1x-new" && mv "${site}.dot1x-new" "${site}"
+}
+ensure_authz_before_eap "${FR_DIR}/sites-enabled/default"
+
 # Soft-fail SQL is already "-sql" in Debian sites; nothing else required for authorize.
 
 CONTROL_SOCK="/var/run/freeradius/freeradius.sock"

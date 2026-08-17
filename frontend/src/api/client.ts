@@ -140,7 +140,49 @@ export type AuthEvent = {
   failure_reason: string | null;
   failure_summary: string | null;
   failure_hint: string | null;
+  returned_attributes: Record<string, string>;
   nas_ip: string | null;
+};
+
+export type Endpoint = {
+  id: string;
+  lab_id: string;
+  mac_address: string;
+  description: string | null;
+  device_type: string | null;
+  authz_policy_id: string | null;
+  authz_policy_name: string | null;
+  enabled: boolean;
+  created_at: string;
+  radius_usernames: string[];
+};
+
+export type RenderedReplyAttribute = {
+  name: string;
+  op: string;
+  value: string;
+};
+
+export type AuthzPolicy = {
+  id: string;
+  lab_id: string;
+  name: string;
+  vlan: number | null;
+  role: string | null;
+  group_name: string | null;
+  reply_attributes: Record<string, string>;
+  enabled: boolean;
+  created_at: string;
+  rendered_attributes: RenderedReplyAttribute[];
+  endpoint_count: number;
+  summary: string;
+};
+
+export type AttributeCatalogEntry = {
+  name: string;
+  label: string;
+  example: string;
+  description: string;
 };
 
 export type Certificate = {
@@ -197,11 +239,14 @@ export type AuthTestResponse = {
   eapol_output: string;
   radius: AuthTestContext;
   event: AuthEvent | null;
+  returned_attributes: Record<string, string>;
 };
 
 export type FreeRadiusSyncResponse = {
   users_synced: number;
   clients_synced: number;
+  endpoints_synced: number;
+  policies_synced: number;
   reload_requested: boolean;
   lab_ids: string[];
   detail: string;

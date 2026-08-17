@@ -7,6 +7,8 @@ const links = [
   { to: "/", label: "Dashboard" },
   { to: "/test", label: "Auth Test" },
   { to: "/users", label: "Users" },
+  { to: "/endpoints", label: "Endpoints" },
+  { to: "/policies", label: "Authorization" },
   { to: "/clients", label: "RADIUS Clients" },
   { to: "/certificates", label: "Certificates" },
   { to: "/events", label: "Auth Events" },

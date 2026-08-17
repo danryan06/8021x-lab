@@ -39,15 +39,31 @@
 
 > **Note:** Basic lab CA already shipped in Phase 1.5 (Wizard + Auth Test: ensure root, issue client cert, PEM/P12 download, FreeRADIUS trust). Phase 2 adds the inventory, real revocation/CRL, and failure explanations.
 
-## Phase 3 — MAB + policies
+## Phase 3 — MAB + authorization policies (done)
 
-- Endpoint (MAC) management
-- Authorization reply attributes (VLAN, Filter-Id, …)
-- Simple vs Advanced policy editors
+- **Endpoints** page: register a device by MAC, with normalization on input
+  (`aa:bb:cc:dd:ee:ff`, `aa-bb-cc-dd-ee-ff`, `aabb.ccdd.eeff`, bare hex all
+  collapse to one canonical form), bulk paste, and a random-endpoint generator
+- MAB end to end: enabled endpoints sync into `radcheck` as `Auth-Type := Accept`
+  under every common MAC spelling, so a MAC authenticates without EAP
+- MAB on the **Authentication Test** page via in-Compose `radclient`, including an
+  unknown-MAC negative test; attempts land in `authentication_events` with
+  `method = mab` and reasons for unknown MAC / disabled endpoint
+- **Authorization** page: `AuthzPolicy` CRUD for VLAN, role (`Filter-Id`), and
+  arbitrary reply attributes, with Simple (VLAN/role pickers) and Advanced (raw
+  name/value editor) modes
+- Policies apply to endpoints via `radreply` and to user groups via
+  `radgroupreply`, so PEAP and EAP-TLS sessions get authorized too
+- Returned attributes are recorded on each event and shown in the Events UI
+- Dashboard endpoint/policy counts + recent MAB activity; guided **MAB wizard
+  path** (policy → endpoint → client → test → events)
+- Remaining: per-endpoint MAB session controls (CoA / Disconnect-Request),
+  time-of-day and NAS-scoped policy conditions
 
 ## Phase 4 — Wizard expansions
 
-- Additional guided flows (wireless-specific, MAB) beyond the PEAP / EAP-TLS first-lab paths
+- Additional guided flows (wireless-specific) beyond the PEAP / EAP-TLS / MAB
+  first-lab paths
 
 ## Phase 5 — Appliance packaging
 

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, type AuthEvent } from "../api/client";
-import { Button, PageHeader, StatusBanner } from "../components/ui";
+import { Button, InfoTip, PageHeader, ReplyAttributes, StatusBanner } from "../components/ui";
+import { useMode } from "../modes/ModeContext";
 
 const POLL_MS = 3000;
 
 export function EventsPage() {
+  const { isAdvanced } = useMode();
   const [events, setEvents] = useState<AuthEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -76,14 +78,29 @@ export function EventsPage() {
               <th className="px-4 py-3">Identity</th>
               <th className="px-4 py-3">Method</th>
               <th className="px-4 py-3">Result</th>
-              <th className="px-4 py-3">Reason</th>
+              <th className="px-4 py-3">
+                <span className="inline-flex items-center gap-1.5">
+                  Authorization
+                  <InfoTip label="About returned attributes">
+                    The reply attributes FreeRADIUS sent back with the Access-Accept — this is
+                    what the switch or AP actually acts on. A VLAN shows as{" "}
+                    <span className="font-mono">Tunnel-Private-Group-Id</span> and a role as{" "}
+                    <span className="font-mono">Filter-Id</span>. Assign them on the{" "}
+                    <span className="font-medium">Authorization</span> page. Switch to Advanced
+                    mode to see every attribute under its RADIUS name.
+                  </InfoTip>
+                </span>
+              </th>
+              {/* Reason holds the longest prose in the table; without a floor the
+                  Authorization column squeezes it to a word per line. */}
+              <th className="min-w-[16rem] px-4 py-3">Reason</th>
               <th className="px-4 py-3">NAS</th>
             </tr>
           </thead>
           <tbody>
             {events.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-ink/70" colSpan={6}>
+                <td className="px-4 py-8 text-ink/70" colSpan={7}>
                   <p className="font-medium text-ink">No authentication events yet.</p>
                   <p className="mt-2 max-w-xl">
                     Generate one from the{" "}
@@ -104,7 +121,9 @@ export function EventsPage() {
                 return (
                   <tr
                     key={event.id}
-                    className={`border-b border-ink/5 ${ok ? "bg-signal/5" : "bg-fail/5"}`}
+                    className={`border-b border-ink/5 align-top ${
+                      ok ? "bg-signal/5" : "bg-fail/5"
+                    }`}
                   >
                     <td className="px-4 py-3 font-mono text-xs">
                       {new Date(event.timestamp).toLocaleString()}
@@ -115,6 +134,12 @@ export function EventsPage() {
                       {ok ? "Accept" : "Reject"}
                     </td>
                     <td className="px-4 py-3">
+                      <ReplyAttributes
+                        attributes={event.returned_attributes}
+                        verbose={isAdvanced}
+                      />
+                    </td>
+                    <td className="min-w-[16rem] px-4 py-3">
                       {ok ? (
                         "—"
                       ) : event.failure_summary ? (

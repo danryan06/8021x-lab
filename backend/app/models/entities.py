@@ -183,6 +183,9 @@ class AuthzPolicy(Base):
     reply_attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     vlan: Mapped[int | None] = mapped_column(Integer, nullable=True)
     role: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Optional user group this policy authorizes (mirrors radius_users.groups →
+    # radusergroup), so PEAP/EAP-TLS logins can receive the same attributes as MAB.
+    group_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

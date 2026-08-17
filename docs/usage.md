@@ -1,7 +1,7 @@
 # Usage guide
 
 Task-oriented walkthroughs for using the lab from the web UI. New to the
-terminology (RADIUS client, PEAP, EAP-TLS, CA/CRL)? Read the
+terminology (RADIUS client, PEAP, EAP-TLS, MAB, CA/CRL)? Read the
 [concepts guide](concepts.md) first — this guide assumes you know *what* the
 pieces are and focuses on *how* to use them.
 
@@ -18,8 +18,8 @@ For install/setup and the command reference, see
    FreeRADIUS, the most recent auth event, and the **RADIUS target** card.
 
 The seeded **Default Lab** gives you a working environment to start in. A *lab*
-is an isolated set of users, clients, certificates, and events — you can run
-several side by side.
+is an isolated set of users, endpoints, clients, authorization policies,
+certificates, and events — you can run several side by side.
 
 The header has two global controls used throughout:
 
@@ -74,6 +74,68 @@ use the **Certificates** and **Auth Test** pages directly:
 Identities must contain only letters, digits, and `. _ @ -` (they become both the
 certificate CN and a filename), so pick clean names.
 
+## Guide: MAB for a device that can't do 802.1X
+
+MAB authenticates a device by its MAC address alone — the fallback for printers,
+cameras, and badge readers with no supplicant. The **Wizard → MAB** path automates
+policy → endpoint → test; by hand:
+
+1. **Create an authorization policy.** On **Authorization → Add policy**, name it
+   (e.g. `Printers VLAN 40`), set the **VLAN** to `40` and the **role** to
+   something your switch knows (e.g. `printer-acl`). This is what FreeRADIUS
+   returns when the device is accepted.
+2. **Register the endpoint.** On **Endpoints → Add endpoint**, paste the MAC in
+   whatever format you have it — `aa:bb:cc:dd:ee:ff`, `aa-bb-cc-dd-ee-ff`,
+   `aabb.ccdd.eeff`, or `aabbccddeeff` all work — pick a device type, and attach
+   the policy. Saving registers the MAC in FreeRADIUS immediately; no restart.
+3. **Test it.** On **Auth Test**, choose method **MAB**, pick the endpoint, and
+   **Run test**. You should get an Access-Accept with `VLAN 40 · role printer-acl`
+   shown as the returned attributes.
+4. **Try the negative cases.** **Unknown-MAC test** sends a MAC the lab has never
+   seen; toggling an endpoint to **disabled** on the Endpoints page and re-testing
+   shows the other rejection reason. Both appear on **Auth Events** with an
+   explanation.
+
+Because MAB trusts a MAC address and nothing else, treat it as inventory control
+rather than authentication and give MAB devices a restricted VLAN — see
+[why MAB is weak](concepts.md#why-mab-is-weak-authentication).
+
+### Registering many endpoints at once
+
+**Bulk add** takes a pasted list (one MAC per line, or comma/space separated),
+normalizes each entry, skips duplicates, and reports any lines it could not parse
+without discarding the good ones. **Generate** creates random MACs under a vendor
+prefix with mixed device types, which is the quickest way to populate a demo.
+
+## Guide: authorization policies (VLAN and role)
+
+Authentication decides *whether* a device gets on; authorization decides *what it
+gets*. The **Authorization** page edits that second half, and the Simple/Advanced
+toggle changes how much protocol you see:
+
+- **Simple** — pick a **VLAN** and a **role**. The lab renders the VLAN into the
+  three tunnel attributes a switch needs, and the role into `Filter-Id`.
+- **Advanced** — edit reply attributes directly by their RADIUS names, with a
+  catalog of common ones (`Session-Timeout`, `Cisco-AVPair`, …) for reference. A
+  raw attribute that repeats one of the rendered names replaces it, so you can
+  override the VLAN with a VLAN *name* instead of an id.
+
+Attach a policy in either of two places:
+
+| Attach to | How | Applies to |
+|-----------|-----|------------|
+| An endpoint | The **Authorization policy** field on Endpoints | That MAC, over MAB |
+| A user group | The **User group** field on the policy | Every user in that group, over PEAP and EAP-TLS |
+
+One policy per user group — if two policies claimed the same group, FreeRADIUS
+would merge both into one reply, which is rarely what you meant.
+
+After a successful authentication, check the **Authorization** column on **Auth
+Events** to confirm what the NAS actually received. If a device isn't landing in
+the VLAN you expect, this tells you whether the problem is on the RADIUS side (no
+attributes returned) or the switch side (attributes returned but not acted on —
+usually a VLAN or ACL that doesn't exist on the device).
+
 ## Guide: managing certificates and revocation
 
 The **Certificates** page is the CA inventory for a lab:
@@ -126,6 +188,8 @@ FreeRADIUS reason underneath (Advanced-friendly). Common ones:
 | Certificate expired / revoked | Cert past validity or on the CRL | Re-issue the certificate |
 | PEAP/MSCHAPv2 password rejected | Wrong password or not synced | Confirm the password; Sync to FreeRADIUS |
 | No matching user | Identity missing in FreeRADIUS | Create the user and Sync to FreeRADIUS |
+| Unknown MAC address | No endpoint registered for that MAC | Add it on **Endpoints** |
+| Endpoint is disabled | Registered but not synced to FreeRADIUS | Re-enable it on **Endpoints** |
 
 ## Guide: keeping FreeRADIUS in sync
 
@@ -136,16 +200,20 @@ Clients) forces a full resync after bulk edits. What each change does:
 |--------|-------------------|
 | Create/update/delete/generate/import user | Upsert/delete `radcheck` NT-Password |
 | Create/update/delete RADIUS client | Rewrite clients config + controlled restart |
+| Create/update/delete/generate endpoint | Upsert/delete `radcheck` (`Auth-Type := Accept`) + `radreply` for every MAC spelling |
+| Create/update/delete authorization policy | Rewrite `radreply` for endpoints using it and `radgroupreply` for its user group |
 | Issue certificate / create lab CA | Publish CA into trust; restart if trust changed |
 | Revoke certificate | Regenerate + publish CRL; restart if it changed |
-| Auth Test | Runs `eapol_test` → FreeRADIUS → event |
+| Auth Test | Runs `eapol_test` (PEAP/EAP-TLS) or `radclient` (MAB) → FreeRADIUS → event |
 
 A controlled restart is used for client and trust changes because FreeRADIUS 3
-only reads those at startup (it does not reload them on SIGHUP).
+only reads those at startup (it does not reload them on SIGHUP). Endpoints and
+policies need neither a reload nor a restart — FreeRADIUS reads those tables per
+request, so a MAC you just registered works on the next attempt.
 
 ## Where to go next
 
 - [Deploying to devices](deploying-to-devices.md) — install a certificate on a real endpoint and configure a switch port or Wi-Fi SSID for 802.1X.
 - [Concepts](concepts.md) — the "what and why" behind these tasks.
 - [Developer setup](developer-setup.md) — commands, testing, running outside Compose.
-- [Roadmap](roadmap.md) — MAB, VLAN/authorization policies, and more.
+- [Roadmap](roadmap.md) — what's built and what's planned.
