@@ -91,7 +91,9 @@ export function EventsPage() {
                   </InfoTip>
                 </span>
               </th>
-              <th className="px-4 py-3">Reason</th>
+              {/* Reason holds the longest prose in the table; without a floor the
+                  Authorization column squeezes it to a word per line. */}
+              <th className="min-w-[16rem] px-4 py-3">Reason</th>
               <th className="px-4 py-3">NAS</th>
             </tr>
           </thead>
@@ -119,7 +121,9 @@ export function EventsPage() {
                 return (
                   <tr
                     key={event.id}
-                    className={`border-b border-ink/5 ${ok ? "bg-signal/5" : "bg-fail/5"}`}
+                    className={`border-b border-ink/5 align-top ${
+                      ok ? "bg-signal/5" : "bg-fail/5"
+                    }`}
                   >
                     <td className="px-4 py-3 font-mono text-xs">
                       {new Date(event.timestamp).toLocaleString()}
@@ -135,7 +139,7 @@ export function EventsPage() {
                         verbose={isAdvanced}
                       />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="min-w-[16rem] px-4 py-3">
                       {ok ? (
                         "—"
                       ) : event.failure_summary ? (
