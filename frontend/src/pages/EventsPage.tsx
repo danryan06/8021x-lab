@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, type AuthEvent } from "../api/client";
-import { Button, PageHeader, StatusBanner } from "../components/ui";
+import { Button, InfoTip, PageHeader, ReplyAttributes, StatusBanner } from "../components/ui";
+import { useMode } from "../modes/ModeContext";
 
 const POLL_MS = 3000;
 
 export function EventsPage() {
+  const { isAdvanced } = useMode();
   const [events, setEvents] = useState<AuthEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -76,6 +78,19 @@ export function EventsPage() {
               <th className="px-4 py-3">Identity</th>
               <th className="px-4 py-3">Method</th>
               <th className="px-4 py-3">Result</th>
+              <th className="px-4 py-3">
+                <span className="inline-flex items-center gap-1.5">
+                  Authorization
+                  <InfoTip label="About returned attributes">
+                    The reply attributes FreeRADIUS sent back with the Access-Accept — this is
+                    what the switch or AP actually acts on. A VLAN shows as{" "}
+                    <span className="font-mono">Tunnel-Private-Group-Id</span> and a role as{" "}
+                    <span className="font-mono">Filter-Id</span>. Assign them on the{" "}
+                    <span className="font-medium">Authorization</span> page. Switch to Advanced
+                    mode to see every attribute under its RADIUS name.
+                  </InfoTip>
+                </span>
+              </th>
               <th className="px-4 py-3">Reason</th>
               <th className="px-4 py-3">NAS</th>
             </tr>
@@ -83,7 +98,7 @@ export function EventsPage() {
           <tbody>
             {events.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-ink/70" colSpan={6}>
+                <td className="px-4 py-8 text-ink/70" colSpan={7}>
                   <p className="font-medium text-ink">No authentication events yet.</p>
                   <p className="mt-2 max-w-xl">
                     Generate one from the{" "}
@@ -113,6 +128,12 @@ export function EventsPage() {
                     <td className="px-4 py-3 uppercase tracking-wide">{event.method}</td>
                     <td className={`px-4 py-3 font-medium ${ok ? "text-signal" : "text-fail"}`}>
                       {ok ? "Accept" : "Reject"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <ReplyAttributes
+                        attributes={event.returned_attributes}
+                        verbose={isAdvanced}
+                      />
                     </td>
                     <td className="px-4 py-3">
                       {ok ? (

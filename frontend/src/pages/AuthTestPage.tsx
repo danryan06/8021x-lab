@@ -5,13 +5,19 @@ import {
   apiFetch,
   type AuthTestContext,
   type AuthTestResponse,
+  type Endpoint,
   type Lab,
   type RadiusClient,
   type RadiusUser,
 } from "../api/client";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
-import { InfoTip } from "../components/ui";
+import { InfoTip, ReplyAttributes } from "../components/ui";
 import { useMode } from "../modes/ModeContext";
+
+type TestMethod = "peap" | "eap_tls" | "mab";
+
+/** An unregistered MAC used to demonstrate that MAB rejects unknown devices. */
+const UNKNOWN_MAC_EXAMPLE = "de:ad:be:ef:00:01";
 
 export function AuthTestPage() {
   const { isAdvanced } = useMode();
@@ -20,10 +26,15 @@ export function AuthTestPage() {
   const [users, setUsers] = useState<RadiusUser[]>([]);
   const [clients, setClients] = useState<RadiusClient[]>([]);
   const [context, setContext] = useState<AuthTestContext | null>(null);
+  const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
-  const [method, setMethod] = useState<"peap" | "eap_tls">("peap");
+  const [method, setMethod] = useState<TestMethod>("peap");
   const [certIdentity, setCertIdentity] = useState("");
+  const [endpointId, setEndpointId] = useState("");
+  // Empty means "use the endpoint's canonical MAC"; a typed MAC overrides the picker.
+  const [macAddress, setMacAddress] = useState("");
+  const [macFormat, setMacFormat] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AuthTestResponse | null>(null);
@@ -32,16 +43,21 @@ export function AuthTestPage() {
 
   async function loadLab(selected: string) {
     selectedLabRef.current = selected;
-    const [u, c] = await Promise.all([
+    const [u, c, e] = await Promise.all([
       apiFetch<RadiusUser[]>(`/users?lab_id=${selected}`),
       apiFetch<RadiusClient[]>(`/clients?lab_id=${selected}`),
+      apiFetch<Endpoint[]>(`/endpoints?lab_id=${selected}`),
     ]);
     // Discard responses for a lab that is no longer selected, otherwise a fast
     // lab switch can pair users from lab A with labId B in the test payload.
     if (selectedLabRef.current !== selected) return;
     setUsers(u);
     setClients(c);
+    setEndpoints(e);
     setUserId(u[0]?.id || "");
+    setEndpointId(e.find((endpoint) => endpoint.enabled)?.id || e[0]?.id || "");
+    setMacAddress("");
+    setMacFormat("");
     if (!certIdentity && u[0]?.username) setCertIdentity(u[0].username);
   }
 
@@ -60,7 +76,16 @@ export function AuthTestPage() {
       .catch((err: Error) => setError(err.message));
   }, []);
 
-  async function runTest(opts: { wrongPassword?: boolean } = {}) {
+  const selectedEndpoint = endpoints.find((e) => e.id === endpointId);
+
+  /** True when a hand-typed MAC belongs to an endpoint the lab has disabled. */
+  function knownMacIsDisabled(value: string): boolean {
+    const digits = value.replace(/[^0-9a-f]/gi, "").toLowerCase();
+    const match = endpoints.find((e) => e.mac_address.replace(/:/g, "") === digits);
+    return !!match && !match.enabled;
+  }
+
+  async function runTest(opts: { wrongPassword?: boolean; unknownMac?: boolean } = {}) {
     if (!labId) return;
     setBusy(true);
     setError(null);
@@ -72,7 +97,21 @@ export function AuthTestPage() {
         wrong_password: !!opts.wrongPassword,
         expect_reject: !!opts.wrongPassword,
       };
-      if (method === "peap") {
+      if (method === "mab") {
+        if (opts.unknownMac) {
+          body.mac_address = UNKNOWN_MAC_EXAMPLE;
+          body.expect_reject = true;
+        } else if (macAddress.trim()) {
+          body.mac_address = macAddress.trim();
+          // A hand-typed MAC may or may not be registered; only expect a reject
+          // when the lab already knows it is disabled.
+          body.expect_reject = knownMacIsDisabled(macAddress);
+        } else {
+          body.endpoint_id = endpointId;
+          body.expect_reject = !selectedEndpoint?.enabled;
+        }
+        if (macFormat) body.mac_username_format = macFormat;
+      } else if (method === "peap") {
         body.user_id = userId;
         body.password = password || "placeholder";
       } else {
@@ -125,7 +164,7 @@ export function AuthTestPage() {
       <section>
         <h1 className="font-display text-3xl font-bold">Authentication Test</h1>
         <p className="mt-1 text-ink/70">
-          Run PEAP/MSCHAPv2 (or EAP-TLS) against FreeRADIUS from the UI — no CLI required.
+          Run PEAP/MSCHAPv2, EAP-TLS, or MAB against FreeRADIUS from the UI — no CLI required.
           Successful and failed attempts appear on the{" "}
           <Link className="underline" to="/events">
             Events
@@ -213,15 +252,109 @@ export function AuthTestPage() {
             <select
               className="mt-1 block ui-btn-ghost px-3 py-2"
               value={method}
-              onChange={(e) => setMethod(e.target.value as "peap" | "eap_tls")}
+              onChange={(e) => setMethod(e.target.value as TestMethod)}
             >
               <option value="peap">PEAP / MSCHAPv2</option>
               <option value="eap_tls">EAP-TLS</option>
+              <option value="mab">MAB (MAC address)</option>
             </select>
           </label>
         </div>
 
-        {method === "peap" ? (
+        {method === "mab" ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              MAC Authentication Bypass
+              <InfoTip label="What a MAB test does">
+                <span className="block">
+                  MAB is the fallback for devices that cannot run an 802.1X supplicant — printers,
+                  cameras, badge readers. The switch puts the device's MAC in{" "}
+                  <span className="font-mono">User-Name</span> and sends{" "}
+                  <span className="font-mono">Service-Type = Call-Check</span>; there is no
+                  password and no EAP exchange.
+                </span>
+                <span className="mt-2 block">
+                  This test sends exactly that request with{" "}
+                  <span className="font-mono">radclient</span>. A registered, enabled MAC gets an
+                  Access-Accept plus whatever its authorization policy returns (VLAN, role).
+                </span>
+                <span className="mt-2 block font-semibold text-ink">Why MAB is weak</span>
+                <span className="mt-0.5 block">
+                  Anyone who can read the MAC off a label — or sniff one off the wire — can spoof
+                  the device. Treat MAB as inventory control, not authentication.
+                </span>
+              </InfoTip>
+            </div>
+            {endpoints.length === 0 ? (
+              <p className="text-sm text-ink/60">
+                No endpoints yet. Register a MAC on the{" "}
+                <Link className="underline" to="/endpoints">
+                  Endpoints
+                </Link>{" "}
+                page, then come back — or use the unknown-MAC test below to see MAB reject a device
+                the lab has never seen.
+              </p>
+            ) : (
+              <label className="block text-sm">
+                Endpoint
+                <select
+                  className="mt-1 block w-full ui-btn-ghost px-3 py-2"
+                  value={endpointId}
+                  onChange={(e) => setEndpointId(e.target.value)}
+                  disabled={!!macAddress.trim()}
+                >
+                  {endpoints.map((endpoint) => (
+                    <option key={endpoint.id} value={endpoint.id}>
+                      {endpoint.mac_address}
+                      {endpoint.description ? ` — ${endpoint.description}` : ""}
+                      {endpoint.enabled ? "" : " (disabled)"}
+                      {endpoint.authz_policy_name ? ` · ${endpoint.authz_policy_name}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="block text-sm">
+              Or type a MAC address
+              <input
+                className="ui-input font-mono"
+                value={macAddress}
+                onChange={(e) => setMacAddress(e.target.value)}
+                placeholder="aa:bb:cc:dd:ee:ff · aa-bb-cc-dd-ee-ff · aabb.ccdd.eeff · aabbccddeeff"
+              />
+              <span className="mt-1 block text-xs text-ink/60">
+                Any common format is accepted. Leave blank to test the endpoint selected above.
+              </span>
+            </label>
+            {isAdvanced && selectedEndpoint && !macAddress.trim() && (
+              <label className="block text-sm">
+                MAC spelling sent as User-Name
+                <select
+                  className="mt-1 block w-full ui-btn-ghost px-3 py-2"
+                  value={macFormat}
+                  onChange={(e) => setMacFormat(e.target.value)}
+                >
+                  <option value="">Canonical ({selectedEndpoint.mac_address})</option>
+                  {selectedEndpoint.radius_usernames.map((username) => (
+                    <option key={username} value={username}>
+                      {username}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-ink/60">
+                  Vendors spell MACs differently. Every spelling is registered in FreeRADIUS, so
+                  each one authenticates the same endpoint.
+                </span>
+              </label>
+            )}
+            {selectedEndpoint && !selectedEndpoint.enabled && !macAddress.trim() && (
+              <p className="text-sm text-fail">
+                This endpoint is disabled, so it is not synced to FreeRADIUS — expect an
+                Access-Reject.
+              </p>
+            )}
+          </div>
+        ) : method === "peap" ? (
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-sm">
               Lab user
@@ -333,7 +466,11 @@ export function AuthTestPage() {
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
-            disabled={busy || (method === "peap" && !userId)}
+            disabled={
+              busy ||
+              (method === "peap" && !userId) ||
+              (method === "mab" && !endpointId && !macAddress.trim())
+            }
             className="ui-btn-signal disabled:opacity-50"
           >
             {busy ? "Running…" : "Run authentication test"}
@@ -346,6 +483,16 @@ export function AuthTestPage() {
               className="ui-btn-ghost text-fail disabled:opacity-50"
             >
               Wrong-password test
+            </button>
+          )}
+          {method === "mab" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => runTest({ unknownMac: true })}
+              className="ui-btn-ghost text-fail disabled:opacity-50"
+            >
+              Unknown-MAC test
             </button>
           )}
         </div>
@@ -384,6 +531,19 @@ export function AuthTestPage() {
               <dd>{result.failure_reason || "—"}</dd>
             </div>
             <div>
+              <dt className="text-ink/50">Returned attributes</dt>
+              <dd>
+                <ReplyAttributes
+                  attributes={
+                    Object.keys(result.returned_attributes).length > 0
+                      ? result.returned_attributes
+                      : result.event?.returned_attributes
+                  }
+                  verbose={isAdvanced}
+                />
+              </dd>
+            </div>
+            <div>
               <dt className="text-ink/50">Event ingested</dt>
               <dd>
                 {result.event ? (
@@ -398,7 +558,8 @@ export function AuthTestPage() {
           </dl>
           {isAdvanced && (
             <pre className="mt-4 max-h-64 overflow-auto border border-ink/10 bg-mist/60 p-3 font-mono text-xs">
-              {result.eapol_output || "(no eapol output)"}
+              {result.eapol_output ||
+                (result.method === "mab" ? "(no radclient output)" : "(no eapol output)")}
             </pre>
           )}
         </section>

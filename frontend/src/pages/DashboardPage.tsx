@@ -3,13 +3,22 @@ import { Link } from "react-router-dom";
 import {
   apiFetch,
   type AuthEvent,
+  type AuthzPolicy,
+  type Endpoint,
   type FreeRadiusSyncResponse,
   type HealthResponse,
   type Lab,
+  type RadiusUser,
 } from "../api/client";
 import { useMode } from "../modes/ModeContext";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
-import { Button, PageHeader, Panel, StatusBanner } from "../components/ui";
+import {
+  Button,
+  PageHeader,
+  Panel,
+  ReplyAttributes,
+  StatusBanner,
+} from "../components/ui";
 
 function statusColor(status: string): string {
   if (status === "ok") return "text-signal";
@@ -23,6 +32,10 @@ export function DashboardPage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [labs, setLabs] = useState<Lab[]>([]);
   const [lastEvent, setLastEvent] = useState<AuthEvent | null>(null);
+  const [users, setUsers] = useState<RadiusUser[]>([]);
+  const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
+  const [policies, setPolicies] = useState<AuthzPolicy[]>([]);
+  const [mabEvents, setMabEvents] = useState<AuthEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -34,14 +47,22 @@ export function DashboardPage() {
     if (loadInFlight.current) return;
     loadInFlight.current = true;
     try {
-      const [h, l, events] = await Promise.all([
+      const [h, l, events, u, e, p, mab] = await Promise.all([
         apiFetch<HealthResponse>("/health"),
         apiFetch<Lab[]>("/labs"),
         apiFetch<AuthEvent[]>("/events?limit=1"),
+        apiFetch<RadiusUser[]>("/users"),
+        apiFetch<Endpoint[]>("/endpoints"),
+        apiFetch<AuthzPolicy[]>("/authz-policies"),
+        apiFetch<AuthEvent[]>("/events?method=mab&limit=5"),
       ]);
       setHealth(h);
       setLabs(l);
       setLastEvent(events[0] || null);
+      setUsers(u);
+      setEndpoints(e);
+      setPolicies(p);
+      setMabEvents(mab);
       setError(null);
     } finally {
       loadInFlight.current = false;
@@ -63,7 +84,8 @@ export function DashboardPage() {
     try {
       const res = await apiFetch<FreeRadiusSyncResponse>("/freeradius/sync", { method: "POST" });
       setSyncMsg(
-        `Synced ${res.users_synced} users, ${res.clients_synced} clients — ` +
+        `Synced ${res.users_synced} users, ${res.clients_synced} clients, ` +
+          `${res.endpoints_synced} endpoints, ${res.policies_synced} authorization policies — ` +
           "FreeRADIUS restarts automatically if client or trust config changed",
       );
       await load();
@@ -74,11 +96,13 @@ export function DashboardPage() {
     }
   }
 
+  const enabledEndpoints = endpoints.filter((e) => e.enabled).length;
+
   return (
     <div className="page-enter space-y-8">
       <PageHeader
         title="Dashboard"
-        subtitle="Live lab status: database, API, FreeRADIUS, and the latest authentication event."
+        subtitle="Live lab status: database, API, FreeRADIUS, lab inventory, and the latest authentication event."
       />
 
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
@@ -97,6 +121,93 @@ export function DashboardPage() {
           </div>
         ))}
       </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        {[
+          {
+            to: "/users",
+            label: "Users",
+            count: users.length,
+            hint: "Identities that authenticate with PEAP or EAP-TLS",
+          },
+          {
+            to: "/endpoints",
+            label: "Endpoints (MAB)",
+            count: endpoints.length,
+            hint:
+              enabledEndpoints === endpoints.length
+                ? "MAC addresses registered for MAC Authentication Bypass"
+                : `${enabledEndpoints} enabled · ${endpoints.length - enabledEndpoints} disabled`,
+          },
+          {
+            to: "/policies",
+            label: "Authorization policies",
+            count: policies.length,
+            hint: "VLAN and role attributes returned on Access-Accept",
+          },
+        ].map((card) => (
+          <Link key={card.to} to={card.to} className="ui-panel p-4 transition hover:border-signal/40">
+            <p className="text-xs uppercase tracking-wide text-ink/50">{card.label}</p>
+            <p className="mt-2 font-display text-3xl font-bold">{card.count}</p>
+            <p className="mt-1 text-xs text-ink/60">{card.hint}</p>
+          </Link>
+        ))}
+      </section>
+
+      <Panel>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold">Recent MAB activity</h2>
+          <Link
+            className="text-sm text-signal underline-offset-2 hover:underline"
+            to="/endpoints"
+          >
+            Manage endpoints
+          </Link>
+        </div>
+        {mabEvents.length === 0 ? (
+          <p className="mt-3 text-sm text-ink/60">
+            No MAB attempts yet. Register a MAC on the{" "}
+            <Link className="underline" to="/endpoints">
+              Endpoints
+            </Link>{" "}
+            page, then run a MAB test from the{" "}
+            <Link className="underline" to="/test">
+              Authentication Test
+            </Link>{" "}
+            page.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2 text-sm">
+            {mabEvents.map((event) => (
+              <li
+                key={event.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink/5 pb-2 last:border-0 last:pb-0"
+              >
+                <span className="font-mono text-xs text-ink/50">
+                  {new Date(event.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="font-mono">{event.identity || "—"}</span>
+                <span
+                  className={
+                    event.result === "success"
+                      ? "font-medium text-signal"
+                      : "font-medium text-fail"
+                  }
+                >
+                  {event.result === "success" ? "Accept" : "Reject"}
+                </span>
+                {event.result === "success" ? (
+                  <ReplyAttributes attributes={event.returned_attributes} />
+                ) : (
+                  <span className="text-ink/60">
+                    {event.failure_summary || event.failure_reason || "—"}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -181,6 +292,12 @@ export function DashboardPage() {
         </Link>
         <Link className="ui-btn-ghost" to="/users">
           Manage users
+        </Link>
+        <Link className="ui-btn-ghost" to="/endpoints">
+          Endpoints
+        </Link>
+        <Link className="ui-btn-ghost" to="/policies">
+          Authorization
         </Link>
         <Link className="ui-btn-ghost" to="/clients">
           RADIUS clients
