@@ -137,6 +137,122 @@ class RadiusClientRead(BaseModel):
     updated_at: datetime
 
 
+class AuthzPolicyBase(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    vlan: int | None = Field(default=None, ge=1, le=4094)
+    role: str | None = Field(default=None, max_length=128)
+    group_name: str | None = Field(default=None, max_length=128)
+    # Raw RADIUS reply attributes (Advanced editor): {"Session-Timeout": "3600"}.
+    reply_attributes: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+class AuthzPolicyCreate(AuthzPolicyBase):
+    lab_id: UUID
+
+
+class AuthzPolicyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    vlan: int | None = Field(default=None, ge=1, le=4094)
+    role: str | None = None
+    group_name: str | None = None
+    reply_attributes: dict[str, str] | None = None
+    enabled: bool | None = None
+    # Explicit clears, since a JSON null is indistinguishable from "unchanged".
+    clear_vlan: bool = False
+    clear_role: bool = False
+    clear_group: bool = False
+
+
+class RenderedReplyAttribute(BaseModel):
+    name: str
+    op: str
+    value: str
+
+
+class AuthzPolicyRead(AuthzPolicyBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    lab_id: UUID
+    created_at: datetime
+    # What actually gets written to radreply/radgroupreply (computed on read).
+    rendered_attributes: list[RenderedReplyAttribute] = Field(default_factory=list)
+    endpoint_count: int = 0
+    summary: str = ""
+
+
+class AttributeCatalogEntry(BaseModel):
+    name: str
+    label: str
+    example: str
+    description: str
+
+
+class EndpointBase(BaseModel):
+    description: str | None = Field(default=None, max_length=255)
+    device_type: str | None = Field(default=None, max_length=64)
+    authz_policy_id: UUID | None = None
+    enabled: bool = True
+
+
+class EndpointCreate(EndpointBase):
+    lab_id: UUID
+    # Any common spelling: aa:bb:cc:dd:ee:ff, aa-bb-cc-dd-ee-ff, aabb.ccdd.eeff, aabbccddeeff.
+    mac_address: str = Field(min_length=12, max_length=32)
+
+
+class EndpointUpdate(BaseModel):
+    mac_address: str | None = Field(default=None, min_length=12, max_length=32)
+    description: str | None = Field(default=None, max_length=255)
+    device_type: str | None = Field(default=None, max_length=64)
+    authz_policy_id: UUID | None = None
+    enabled: bool | None = None
+    clear_authz_policy: bool = False
+
+
+class EndpointRead(EndpointBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    lab_id: UUID
+    mac_address: str
+    created_at: datetime
+    authz_policy_name: str | None = None
+    # Every User-Name spelling registered in FreeRADIUS for this MAC.
+    radius_usernames: list[str] = Field(default_factory=list)
+
+
+class EndpointBulkCreate(EndpointBase):
+    lab_id: UUID
+    # Free-form paste: newline, comma, or semicolon separated MACs.
+    mac_addresses: str = Field(min_length=1)
+
+
+class EndpointBulkResponse(BaseModel):
+    created: int
+    skipped: int
+    errors: list[str] = Field(default_factory=list)
+    endpoints: list[EndpointRead] = Field(default_factory=list)
+
+
+class GenerateEndpointsRequest(BaseModel):
+    lab_id: UUID
+    count: int = Field(default=5, ge=1, le=500)
+    # OUI (vendor prefix) the generated MACs share, e.g. "aa:bb:cc".
+    oui: str = Field(default="02:1a:2b", max_length=32)
+    device_type: str | None = Field(default=None, max_length=64)
+    # Mix device types from a lab-friendly list (printer, camera, voip, …).
+    mixed_device_types: bool = True
+    authz_policy_id: UUID | None = None
+    enabled: bool = True
+
+
+class GenerateEndpointsResponse(BaseModel):
+    created: int
+    endpoints: list[EndpointRead] = Field(default_factory=list)
+
+
 class AuthEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

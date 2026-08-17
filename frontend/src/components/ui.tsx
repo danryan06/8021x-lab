@@ -96,6 +96,63 @@ export function Button({
   return <button type={props.type || "button"} className={`${base} ${className}`} {...props} />;
 }
 
+const VLAN_ATTRIBUTE = "tunnel-private-group-id";
+const ROLE_ATTRIBUTE = "filter-id";
+// Plumbing that carries the VLAN assignment but says nothing on its own.
+const VLAN_PLUMBING = ["tunnel-type", "tunnel-medium-type"];
+
+/**
+ * Reply attributes FreeRADIUS returned with an Access-Accept.
+ * Simple mode reads them as "VLAN 20 · role guest-acl"; Advanced mode lists every
+ * attribute under its real RADIUS name.
+ */
+export function ReplyAttributes({
+  attributes,
+  verbose = false,
+}: {
+  attributes: Record<string, string> | null | undefined;
+  verbose?: boolean;
+}) {
+  const entries = Object.entries(attributes || {});
+  if (entries.length === 0) return <span className="text-ink/50">—</span>;
+
+  if (verbose) {
+    return (
+      <ul className="space-y-0.5 font-mono text-xs">
+        {entries.map(([name, value]) => (
+          <li key={name}>
+            <span className="text-ink/60">{name}</span> = {value}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  const chips = entries
+    .filter(([name]) => !VLAN_PLUMBING.includes(name.toLowerCase()))
+    .map(([name, value]) => {
+      const key = name.toLowerCase();
+      if (key === VLAN_ATTRIBUTE) return { key: name, label: `VLAN ${value}` };
+      if (key === ROLE_ATTRIBUTE) return { key: name, label: `role ${value}` };
+      return { key: name, label: `${name} ${value}` };
+    });
+
+  if (chips.length === 0) return <span className="text-ink/50">—</span>;
+
+  return (
+    <span className="flex flex-wrap gap-1">
+      {chips.map((chip) => (
+        <span
+          key={chip.key}
+          className="border border-signal/40 bg-signal/10 px-1.5 py-0.5 text-xs text-ink/80"
+        >
+          {chip.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function Field({
   label,
   children,

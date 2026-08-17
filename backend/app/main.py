@@ -10,16 +10,22 @@ from app.api import (
     auth_tests,
     ca,
     clients,
+    endpoints,
     events,
     freeradius,
     health,
     labs,
+    policies,
     radius_target,
     users,
 )
 from app.config import get_settings
 from app.db import SessionLocal
-from app.integrations.freeradius.sql_sync import sync_all_users
+from app.integrations.freeradius.sql_sync import (
+    sync_all_endpoints,
+    sync_all_users,
+    sync_authz_policy_groups,
+)
 from app.integrations.freeradius.sync import bootstrap_radius_runtime
 from app.workers.auth_log_ingestion import run_ingestion_task
 
@@ -33,6 +39,8 @@ async def lifespan(app: FastAPI):
     try:
         with SessionLocal() as db:
             sync_all_users(db)
+            sync_all_endpoints(db)
+            sync_authz_policy_groups(db)
             bootstrap_radius_runtime(db)
         logger.info("FreeRADIUS control-plane sync bootstrap complete")
     except Exception:
@@ -71,6 +79,8 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(labs.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(clients.router, prefix="/api")
+app.include_router(endpoints.router, prefix="/api")
+app.include_router(policies.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
 app.include_router(ca.router, prefix="/api")
 app.include_router(auth_tests.router, prefix="/api")

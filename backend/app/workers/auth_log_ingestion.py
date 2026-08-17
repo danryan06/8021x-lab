@@ -14,10 +14,16 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import SessionLocal
 from app.integrations.freeradius.log_parse import parse_linelog_line
-from app.models.entities import AuthenticationEvent, Lab, RadiusClient
+from app.integrations.freeradius.mab import mab_reject_reason
+from app.models.entities import AuthenticationEvent, AuthMethod, AuthResult, Endpoint, Lab, RadiusClient
+from app.validation import normalize_mac
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Rejects FreeRADIUS could not attribute to a failing module arrive with this
+# placeholder; the control plane may know better (e.g. an unregistered MAC).
+_GENERIC_FAILURES = {"", "authentication failed"}
 
 
 def _resolve_lab_id(db: Session, nas_ip: str | None) -> UUID | None:
@@ -29,20 +35,50 @@ def _resolve_lab_id(db: Session, nas_ip: str | None) -> UUID | None:
     return lab.id if lab else None
 
 
+def _explain_mab_reject(
+    db: Session,
+    lab_id: UUID | None,
+    identity: str | None,
+    failure_reason: str | None,
+) -> str | None:
+    """Replace a bare MAB reject with the reason from the lab's endpoint list."""
+    if (failure_reason or "").strip().lower() not in _GENERIC_FAILURES:
+        return failure_reason
+    if not identity:
+        return failure_reason
+    try:
+        mac = normalize_mac(identity)
+    except ValueError:
+        return failure_reason
+    stmt = select(Endpoint).where(Endpoint.mac_address == mac)
+    if lab_id:
+        stmt = stmt.where(Endpoint.lab_id == lab_id)
+    endpoint = db.scalar(stmt.limit(1))
+    reason = mab_reject_reason(
+        registered=endpoint is not None,
+        enabled=bool(endpoint and endpoint.enabled),
+    )
+    return reason or failure_reason
+
+
 def ingest_line(db: Session, line: str, lab_id: UUID | None = None) -> AuthenticationEvent | None:
     parsed = parse_linelog_line(line)
     if not parsed:
         return None
 
     resolved_lab = lab_id or _resolve_lab_id(db, parsed.nas_ip)
+    failure_reason = parsed.failure_reason
+    if parsed.method == AuthMethod.mab and parsed.result == AuthResult.failure:
+        failure_reason = _explain_mab_reject(db, resolved_lab, parsed.identity, failure_reason)
+
     event = AuthenticationEvent(
         lab_id=resolved_lab,
         timestamp=parsed.timestamp,
         identity=parsed.identity,
         method=parsed.method,
         result=parsed.result,
-        failure_reason=parsed.failure_reason,
-        returned_attributes={},
+        failure_reason=failure_reason,
+        returned_attributes=parsed.returned_attributes,
         nas_ip=parsed.nas_ip,
         raw_ref=parsed.raw,
     )

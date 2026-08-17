@@ -1,11 +1,17 @@
 # -*- text -*-
-# Pinned auth event format for 802.1X Lab (Phase 1).
+# Pinned auth event format for 802.1X Lab.
 # Parser: backend/app/integrations/freeradius/log_parse.py
 #
-# DOT1X|<unix-epoch>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Packet-Type>|<failure>
+# DOT1X|<unix-epoch>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Packet-Type>|<failure>|<Service-Type>|<reply attributes>
 #
 # Use %l (epoch seconds). FreeRADIUS 3.2 %{...}t strftime xlats are brittle in
 # linelog format strings and previously caused post-auth failures → Access-Reject.
+#
+# Fields 8-9 were added in Phase 3 and the parser treats them as optional:
+#   Service-Type       — Call-Check marks a MAC lookup, i.e. MAB (no EAP-Type)
+#   reply attributes   — %{pairs:reply:} so the UI can show what the NAS received
+#                        (VLAN / Filter-Id …). Key material such as MS-MPPE-* and
+#                        EAP-Message is filtered out by the ingestion worker.
 
 linelog linelog_dot1x {
 	filename = /etc/freeradius/dot1x-lab/logs/auth.log
@@ -16,8 +22,8 @@ linelog linelog_dot1x {
 	reference = "dot1x.%{%{reply:Packet-Type}:-unknown}"
 
 	dot1x {
-		Access-Accept = "DOT1X|%l|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|Access-Accept|"
-		Access-Reject = "DOT1X|%l|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|Access-Reject|%{Module-Failure-Message}"
-		unknown = "DOT1X|%l|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|%{reply:Packet-Type}|%{Module-Failure-Message}"
+		Access-Accept = "DOT1X|%l|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|Access-Accept||%{Service-Type}|%{pairs:reply:}"
+		Access-Reject = "DOT1X|%l|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|Access-Reject|%{Module-Failure-Message}|%{Service-Type}|%{pairs:reply:}"
+		unknown = "DOT1X|%l|%{User-Name}|%{NAS-IP-Address}|%{EAP-Type}|%{reply:Packet-Type}|%{Module-Failure-Message}|%{Service-Type}|%{pairs:reply:}"
 	}
 }

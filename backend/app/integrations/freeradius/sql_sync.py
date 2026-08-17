@@ -1,7 +1,18 @@
-"""Sync control-plane identities/clients into FreeRADIUS SQL tables.
+"""Sync control-plane identities/clients/endpoints into FreeRADIUS SQL tables.
 
-Source of truth: `radius_users` / `radius_clients`.
-FreeRADIUS reads: `radcheck` (NT-Password) and `nas` (optional SQL clients).
+Source of truth: `radius_users` / `radius_clients` / `endpoints` / `authz_policies`.
+FreeRADIUS reads:
+
+| Control plane | FreeRADIUS SQL |
+|---------------|----------------|
+| `radius_users` | `radcheck` (NT-Password) + `radusergroup` |
+| `radius_clients` | `nas` (mirror; clients load from the rendered file) |
+| `endpoints` (MAB) | `radcheck` (`Auth-Type := Accept`) + `radreply` |
+| `authz_policies` | `radreply` (per endpoint) / `radgroupreply` (per user group) |
+
+`rlm_sql` queries these tables per request, so endpoint/policy changes apply to
+the next Access-Request with no reload — unlike clients.conf, which FreeRADIUS
+only reads at startup.
 """
 
 from __future__ import annotations
@@ -13,7 +24,9 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.models.entities import RadiusClient, RadiusUser, UserStatus
+from app.integrations.freeradius.mab import mac_radius_usernames
+from app.integrations.freeradius.reply_attributes import render_policy_attributes
+from app.models.entities import AuthzPolicy, Endpoint, RadiusClient, RadiusUser, UserStatus
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +109,129 @@ def delete_client_from_nas(db: Session, client: RadiusClient) -> None:
     db.execute(text("DELETE FROM nas WHERE shortname = :s"), {"s": shortname})
     db.commit()
     logger.info("Deleted FreeRADIUS NAS row for client id=%s", client.id)
+
+
+def _policy_reply_rows(policy: AuthzPolicy | None) -> list[tuple[str, str, str]]:
+    """Rendered (attribute, op, value) rows for a policy, or none when disabled."""
+    if policy is None or not policy.enabled:
+        return []
+    attributes = render_policy_attributes(
+        vlan=policy.vlan,
+        role=policy.role,
+        extra=policy.reply_attributes or {},
+    )
+    return [(a.name, a.op, a.value) for a in attributes]
+
+
+def _delete_endpoint_rows(db: Session, usernames: list[str]) -> None:
+    for username in usernames:
+        db.execute(
+            text("DELETE FROM radcheck WHERE username = :u AND attribute = 'Auth-Type'"),
+            {"u": username},
+        )
+        db.execute(text("DELETE FROM radreply WHERE username = :u"), {"u": username})
+
+
+def sync_endpoint_to_radius(db: Session, endpoint: Endpoint) -> list[str]:
+    """Register (or unregister) one MAB endpoint in FreeRADIUS SQL.
+
+    Writes `Auth-Type := Accept` to `radcheck` for every spelling of the MAC a NAS
+    might send, plus the endpoint's authorization policy as `radreply` rows.
+    Returns the RADIUS usernames now registered (empty when disabled).
+    """
+    usernames = mac_radius_usernames(endpoint.mac_address)
+    _delete_endpoint_rows(db, usernames)
+
+    if not endpoint.enabled:
+        db.commit()
+        logger.info("Removed FreeRADIUS MAB rows for endpoint id=%s (disabled)", endpoint.id)
+        return []
+
+    policy = (
+        db.get(AuthzPolicy, endpoint.authz_policy_id) if endpoint.authz_policy_id else None
+    )
+    reply_rows = _policy_reply_rows(policy)
+    for username in usernames:
+        # MAB has no secret: a known MAC is accepted regardless of User-Password.
+        db.execute(
+            text(
+                "INSERT INTO radcheck (username, attribute, op, value) "
+                "VALUES (:u, 'Auth-Type', ':=', 'Accept')"
+            ),
+            {"u": username},
+        )
+        for name, op, value in reply_rows:
+            db.execute(
+                text(
+                    "INSERT INTO radreply (username, attribute, op, value) "
+                    "VALUES (:u, :a, :o, :v)"
+                ),
+                {"u": username, "a": name, "o": op, "v": value},
+            )
+    db.commit()
+    logger.info(
+        "Synced FreeRADIUS MAB rows for endpoint id=%s (%s usernames, %s reply attributes)",
+        endpoint.id,
+        len(usernames),
+        len(reply_rows),
+    )
+    return usernames
+
+
+def delete_endpoint_from_radius(db: Session, mac_address: str) -> None:
+    _delete_endpoint_rows(db, mac_radius_usernames(mac_address))
+    db.commit()
+    logger.info("Deleted FreeRADIUS MAB rows for endpoint mac=%s", mac_address)
+
+
+def sync_all_endpoints(db: Session, lab_id: UUID | None = None) -> int:
+    stmt = select(Endpoint)
+    if lab_id:
+        stmt = stmt.where(Endpoint.lab_id == lab_id)
+    endpoints = list(db.scalars(stmt).all())
+    for endpoint in endpoints:
+        sync_endpoint_to_radius(db, endpoint)
+    return len(endpoints)
+
+
+def sync_authz_policy_groups(db: Session, lab_id: UUID | None = None) -> int:
+    """Push group-bound authorization policies into `radgroupreply`.
+
+    Users carry group names (`radusergroup`), so binding a policy to a group is how
+    a successful PEAP/EAP-TLS login picks up VLAN/role attributes.
+    """
+    stmt = select(AuthzPolicy).where(AuthzPolicy.group_name.isnot(None))
+    if lab_id:
+        stmt = stmt.where(AuthzPolicy.lab_id == lab_id)
+    policies = list(db.scalars(stmt).all())
+    synced = 0
+    for policy in policies:
+        group = (policy.group_name or "").strip()
+        if not group:
+            continue
+        db.execute(text("DELETE FROM radgroupreply WHERE groupname = :g"), {"g": group})
+        for name, op, value in _policy_reply_rows(policy):
+            db.execute(
+                text(
+                    "INSERT INTO radgroupreply (groupname, attribute, op, value) "
+                    "VALUES (:g, :a, :o, :v)"
+                ),
+                {"g": group, "a": name, "o": op, "v": value},
+            )
+        synced += 1
+    db.commit()
+    if synced:
+        logger.info("Synced %s group-bound authorization policies to radgroupreply", synced)
+    return synced
+
+
+def delete_group_reply(db: Session, group_name: str) -> None:
+    group = (group_name or "").strip()
+    if not group:
+        return
+    db.execute(text("DELETE FROM radgroupreply WHERE groupname = :g"), {"g": group})
+    db.commit()
+    logger.info("Deleted radgroupreply rows for group=%s", group)
 
 
 def sync_all_users(db: Session, lab_id: UUID | None = None) -> int:
