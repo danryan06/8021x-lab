@@ -16,7 +16,7 @@
 | `frontend` | React SPA (Vite), served via nginx in Compose |
 | `backend` | FastAPI control plane, config render, CA adapter, event ingestion |
 | `db` | PostgreSQL — app data **and** FreeRADIUS SQL tables |
-| `freeradius` | RADIUS authentication data plane (PEAP/MSCHAPv2 + basic EAP-TLS) |
+| `freeradius` | RADIUS authentication data plane (PEAP/MSCHAPv2, EAP-TLS, MAB) |
 | CA volume | Local openssl adapter data (step-ca adapter planned) |
 
 ## Control vs data plane
@@ -25,9 +25,11 @@
 Operator → Frontend → Backend API → PostgreSQL (control plane)
                               ↓
               Sync NT-Password → radcheck / NAS → nas
+              Sync endpoint MACs → radcheck (Auth-Type := Accept)
+              Sync policy attributes → radreply / radgroupreply
               Render clients.dot1x.conf + restart.request
                               ↓
-NAS / AP  ←——————→  FreeRADIUS (rlm_sql + EAP/PEAP)
+NAS / AP  ←——————→  FreeRADIUS (rlm_sql + EAP/PEAP + MAB)
                               ↓
                      linelog DOT1X|…
                               ↓
@@ -44,6 +46,8 @@ Control-plane tables remain authoritative:
 |---------------|----------------|--------------|
 | `radius_users` | `radcheck` (`NT-Password`) + `radusergroup` | user create / update / delete |
 | `radius_clients` | rendered `clients.dot1x.conf` (+ `nas` mirror) | client create / update / delete |
+| `endpoints` | `radcheck` (`Auth-Type := Accept`) + `radreply` (its policy) | endpoint create / update / delete, policy edit |
+| `authz_policies` | `radreply` (via endpoints) / `radgroupreply` (via `group_name`) | policy create / update / delete |
 
 Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL tables (`radcheck`, `radreply`, `nas`, `radacct`, …) in the same database as the app. FreeRADIUS `rlm_sql` uses dialect `postgresql` against the Compose `db` service. Users authenticate from `radcheck`. NAS rows are mirrored into `nas` for inspection, but `read_clients = no` so FreeRADIUS loads clients only from the rendered file (avoids duplicate-IP conflicts).
 
@@ -71,15 +75,85 @@ PEAP/MSCHAPv2 cannot use bcrypt. On user create/update the API:
 
 NT hashes and cleartext passwords are **never** written to application logs. Cleartext is only returned once from the bulk user generator response.
 
+## MAB and authorization policies (Phase 3)
+
+### How a MAC becomes a RADIUS identity
+
+MAB has no supplicant and no password: the NAS puts the device MAC in `User-Name`
+and sends `Service-Type = Call-Check`. To answer that, an **enabled** endpoint is
+written to `radcheck` as `Auth-Type := Accept`, which short-circuits
+authentication for that `User-Name` — the MAB trust model, expressed in one row.
+
+Vendors spell MACs differently, so one endpoint is registered under every common
+spelling of its canonical MAC (`mac_radius_usernames`): colon, hyphen, and bare
+hex, each in lower and upper case — six `radcheck` rows per endpoint. Disabling
+an endpoint deletes its rows rather than flagging them, so a disabled MAC fails
+the same way an unregistered one does (and the control plane supplies the reason
+the UI shows).
+
+Unlike clients, endpoints and policies need **no reload or restart**: `rlm_sql`
+queries `radcheck`/`radreply` per request, so a newly registered MAC works on the
+next packet.
+
+### How policy attributes reach FreeRADIUS
+
+`AuthzPolicy` stores intent (a VLAN, a role, plus arbitrary raw pairs).
+`integrations/freeradius/reply_attributes.py` is the single place that renders it
+into RADIUS attributes:
+
+| Policy field | Rendered rows |
+|--------------|---------------|
+| `vlan = 40` | `Tunnel-Type = VLAN`, `Tunnel-Medium-Type = IEEE-802`, `Tunnel-Private-Group-Id = 40` |
+| `role = "printer-acl"` | `Filter-Id = printer-acl` |
+| `reply_attributes` | each pair verbatim; a pair repeating a rendered name replaces it in place, so Advanced mode wins without emitting two rows for one attribute |
+
+Those rows are written to one of two stock FreeRADIUS tables, depending on what
+the policy is attached to:
+
+- **`radreply`** — keyed by `username`, so an endpoint's policy is written under
+  each of that endpoint's MAC spellings. This is the MAB path.
+- **`radgroupreply`** — keyed by `groupname`, used when a policy sets
+  `group_name`. Users already sync into `radusergroup`, so PEAP and EAP-TLS
+  sessions pick up their group's attributes with no per-user rows. One policy per
+  group is enforced in the service layer, because FreeRADIUS would otherwise
+  merge two policies into one reply.
+
+Attribute names and values are validated before they reach SQL or `radclient`
+(dictionary-shaped names, no quotes/newlines, 253-byte limit) since both are
+line-oriented formats where a stray newline would inject an extra attribute.
+
+### MAB test path
+
+The **Auth Test** MAB option runs `radclient` (from `freeradius-utils`, installed
+in the backend image) inside the backend container against `freeradius:1812`,
+building the same request a switch sends: MAC as `User-Name`/`User-Password`,
+`Service-Type = Call-Check`, `Calling-Station-Id`, and the container's own address
+as `NAS-IP-Address`. `radclient` exits 0 for any answered request, so the reply
+packet type — not the exit code — decides accept vs reject.
+
 ### Auth event ingestion
 
 FreeRADIUS module `linelog_dot1x` writes:
 
 ```text
-DOT1X|<unix-epoch>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Access-Accept|Access-Reject>|<failure>
+DOT1X|<unix-epoch>|<User-Name>|<NAS-IP-Address>|<EAP-Type>|<Access-Accept|Access-Reject>|<failure>|<Service-Type>|<reply attributes>
 ```
 
 (`%l` epoch timestamps avoid brittle FreeRADIUS strftime xlats in linelog format strings.)
+
+Fields 8–9 were added in Phase 3 and the parser treats them as optional, so events
+written by an older FreeRADIUS container still parse:
+
+- **`Service-Type`** — `Call-Check` with no `EAP-Type` identifies the attempt as
+  MAB, which is how an event gets `method = mab`.
+- **reply attributes** — `%{pairs:reply:}`, so the UI can show what the NAS
+  actually received. The ingestion worker filters key material and protocol
+  plumbing (`MS-MPPE-*`, `EAP-Message`, `State`, …) before storing the rest in
+  `authentication_events.returned_attributes`.
+
+A MAB reject carries no `Module-Failure-Message` — nothing failed, nothing
+matched — so the worker looks the MAC up in `endpoints` and records whether it was
+an unknown MAC or a disabled endpoint.
 
 The backend lifespan task tails `FREERADIUS_AUTH_LOG_PATH` (shared volume) and inserts into `authentication_events`. Catch-all `lab-docker-host-N` clients scoped to the container's own Docker bridge subnets (secret `FREERADIUS_LAB_SECRET`, default `testing123`) accept RADIUS from Compose published ports on the Docker host; real NAS devices need per-NAS clients created in the UI.
 

@@ -54,7 +54,8 @@ and the [usage guide](docs/usage.md) (step-by-step how-to).
 | Certificate inventory + revocation | Vendor switch/WLC generators |
 | RADIUS client sync into FreeRADIUS | Production-hardened NAC |
 | Auth events with plain-language failure explanations | Cloud identity providers |
-| Guided PEAP + EAP-TLS wizards | MAB / VLAN authorization policies (planned) |
+| MAB endpoints + VLAN/role authorization policies | Packet capture / classroom mode |
+| Guided PEAP, EAP-TLS, and MAB wizards | CoA / Disconnect-Request (planned) |
 
 ## Stack
 

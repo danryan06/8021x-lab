@@ -16,7 +16,7 @@ There are three roles in every 802.1X exchange:
 
 | Role | What it is | In this lab |
 |------|-----------|-------------|
-| **Supplicant** | The device trying to get on the network (laptop, phone, printer) | `eapol_test` simulates this for you |
+| **Supplicant** | The device trying to get on the network (laptop, phone, printer) | `eapol_test` simulates this for you (`radclient` for MAB, which has no supplicant) |
 | **Authenticator** | The switch or wireless access point/controller enforcing the port | Your real NAS, or the built-in test path |
 | **Authentication server** | The RADIUS server that makes the accept/reject decision | FreeRADIUS, driven by this control plane |
 
@@ -136,6 +136,87 @@ the CRL during EAP-TLS is opt-in (`FREERADIUS_ENFORCE_CRL`), because turning on
 CRL checking requires a current CRL for every trusted CA or authentication
 fails — a classic real-world PKI footgun the lab lets you experiment with safely.
 
+## MAB: for devices that cannot do 802.1X
+
+Not every device can run a supplicant. Printers, IP cameras, badge readers,
+thermostats, and older medical equipment often have no 802.1X support at all. If
+your only options were "authenticate with 802.1X" or "stay off the network," you
+could never turn 802.1X on.
+
+**MAB (MAC Authentication Bypass)** is the escape hatch. When a switch port sees
+no EAPOL response — the device never answers the 802.1X request — the switch
+falls back to MAB: it takes the device's **MAC address**, puts it in the
+`User-Name` field, and sends an ordinary Access-Request marked
+`Service-Type = Call-Check` (RADIUS's way of saying "this is a MAC lookup, not a
+user login"). If the RADIUS server recognizes that MAC, the device gets on.
+
+In this lab you register a MAC as an **endpoint**. Enabled endpoints are synced
+into FreeRADIUS as `Auth-Type := Accept`, which means "if the `User-Name` matches
+this MAC, accept it" — there is no password to verify, because there is no
+password.
+
+### Why MAB is weak authentication
+
+This is the part worth internalizing:
+
+- **A MAC address is not a secret.** It is printed on the device label, broadcast
+  in every frame the device sends, and visible to anyone with a laptop on the
+  same segment.
+- **MAC addresses are trivially spoofable.** Changing a NIC's MAC is a one-line
+  command on every major operating system. Anyone who can read a MAC can *become*
+  that device as far as MAB is concerned.
+- **There is no cryptography anywhere in the exchange.** PEAP has a TLS tunnel
+  and a password; EAP-TLS has mutual certificate validation. MAB has a string
+  comparison.
+
+So MAB is best understood as **inventory control, not authentication**. It answers
+"is this a device we know about?" — not "is this device who it claims to be." The
+standard mitigation is to pair MAB with restrictive authorization: put MAB
+devices in their own VLAN with an ACL that only permits the traffic that kind of
+device actually needs, so a spoofed printer MAC gets you onto the printer VLAN
+and nowhere else.
+
+To make this concrete, one detail matters for real hardware: **vendors spell MAC
+addresses differently.** Cisco IOS sends bare hex (`aabbccddeeff`), Cisco WLC and
+Juniper use colons, some Windows tooling uses hyphens, and case varies. The lab
+stores one canonical form (`aa:bb:cc:dd:ee:ff`) but registers every common
+spelling in FreeRADIUS, so the same endpoint authenticates whatever your switch
+sends.
+
+## Authorization: what the switch does after "yes"
+
+**Authentication** answers "who is this?". **Authorization** answers "and what
+access do they get?". They are separate questions, and RADIUS answers both in the
+same packet: an Access-Accept can carry **reply attributes** that tell the switch
+what to do with the session.
+
+The lab models this as an **authorization policy**. A policy has friendly fields
+(a VLAN, a role) and optionally any raw attributes you want, and it renders down
+to the RADIUS attributes a switch or AP actually understands:
+
+| You configure | FreeRADIUS returns | What the NAS does |
+|---------------|-------------------|-------------------|
+| VLAN `40` | `Tunnel-Type = VLAN`<br>`Tunnel-Medium-Type = IEEE-802`<br>`Tunnel-Private-Group-Id = 40` | Puts the port or client into VLAN 40 |
+| Role `printer-acl` | `Filter-Id = printer-acl` | Applies the ACL/role named `printer-acl`, which must already exist on the device |
+| Anything else | The attribute verbatim (e.g. `Session-Timeout`, `Cisco-AVPair`) | Vendor-specific behaviour |
+
+Two things about this are worth calling out because they surprise people:
+
+- **A VLAN assignment is three attributes, not one.** `Tunnel-Private-Group-Id`
+  carries the VLAN, but a switch will ignore it unless `Tunnel-Type` and
+  `Tunnel-Medium-Type` are also present and correct. The Simple editor fills all
+  three for you; the Advanced editor shows you that it did.
+- **RADIUS only names the role — it does not define it.** `Filter-Id = printer-acl`
+  tells the switch "apply the thing you already call `printer-acl`". If that ACL
+  doesn't exist on the switch, nothing happens. RADIUS assigns policy; the NAS
+  implements it.
+
+Policies attach in two places: to an **endpoint** (so a MAB device gets its VLAN)
+and to a **user group** (so PEAP and EAP-TLS users get theirs). Every accepted
+authentication records the attributes that were actually returned, and the Events
+page shows them — so you can confirm the switch really received `VLAN 40` rather
+than assuming it did.
+
 ## Authentication events: seeing what happened
 
 Every accept/reject decision FreeRADIUS makes is captured as an
@@ -143,7 +224,9 @@ Every accept/reject decision FreeRADIUS makes is captured as an
 loop that makes the lab useful for learning: you make a change, run a test, and
 see exactly whether it was accepted or rejected — and if rejected, a
 plain-language explanation (untrusted CA, expired/revoked certificate, wrong
-password, unknown user) plus a hint on how to fix it.
+password, unknown user, unknown MAC, disabled endpoint) plus a hint on how to fix
+it. Accepted events also show the reply attributes that went back to the NAS, so
+authorization is visible and not just assumed.
 
 ## Simple vs. Advanced mode
 
@@ -153,8 +236,14 @@ keep first-time flows approachable; Advanced mode surfaces the underlying values
 to see what's really happening. The philosophy is: *make the easy path easy,
 without hiding the real machinery from someone who wants to learn it.*
 
+Authorization policies are the clearest example. In Simple mode you pick a VLAN
+and a role; in Advanced mode you edit the reply attributes directly by their
+RADIUS names and can see that "VLAN 40" really means three tunnel attributes.
+Both modes edit the same policy — the toggle changes how much of the protocol you
+are looking at, not what the lab does.
+
 ## Where to go next
 
 - [Usage guide](usage.md) — do these things step by step in the UI.
 - [Architecture](architecture.md) — how the control plane, FreeRADIUS, and CA fit together.
-- [Roadmap](roadmap.md) — what's built and what's planned (MAB, VLAN policies, step-ca).
+- [Roadmap](roadmap.md) — what's built and what's planned (CoA, policy conditions, step-ca).
