@@ -13,6 +13,42 @@ function getToken(): string | null {
   return localStorage.getItem("dot1x_token");
 }
 
+/** One entry of a FastAPI 422 body: `{"detail": [{"loc": [...], "msg": "..."}]}`. */
+type ValidationIssue = {
+  loc?: (string | number)[];
+  msg?: string;
+};
+
+/** "body" → "name" is noise; keep the field path a reader would recognize. */
+const LOCATION_PREFIXES = ["body", "query", "path", "header", "cookie"];
+
+function issueText(issue: ValidationIssue): string {
+  const message = issue.msg || "is not valid";
+  const field = (issue.loc || [])
+    .filter((part, index) => !(index === 0 && LOCATION_PREFIXES.includes(String(part))))
+    .join(".");
+  return field ? `${field}: ${message}` : message;
+}
+
+/**
+ * Turn an error body into something a person can read. FastAPI answers a
+ * validation failure with a list of Pydantic issue objects rather than a string,
+ * and dumping that to JSON puts `[{"type":"string_too_short",…}]` on screen.
+ */
+function readableDetail(body: unknown): string | null {
+  const detail = (body as { detail?: unknown } | null)?.detail ?? body;
+  if (typeof detail === "string") return detail.trim() || null;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((issue) => issueText(issue as ValidationIssue)).filter(Boolean);
+    return parts.length ? parts.join("; ") : null;
+  }
+  if (detail && typeof detail === "object") {
+    const issue = detail as ValidationIssue;
+    if (issue.msg) return issueText(issue);
+  }
+  return null;
+}
+
 export function setToken(token: string | null) {
   if (token) localStorage.setItem("dot1x_token", token);
   else localStorage.removeItem("dot1x_token");
@@ -45,12 +81,11 @@ export async function apiFetch<T>(
     }
     let detail = res.statusText;
     try {
-      const data = await res.json();
-      detail = data.detail || JSON.stringify(data);
+      detail = readableDetail(await res.json()) || detail;
     } catch {
       /* ignore */
     }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -69,12 +104,11 @@ export async function apiDownload(path: string, filename: string): Promise<void>
     }
     let detail = res.statusText;
     try {
-      const data = await res.json();
-      detail = data.detail || detail;
+      detail = readableDetail(await res.json()) || detail;
     } catch {
       /* ignore */
     }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : "Download failed");
+    throw new ApiError(res.status, detail || "Download failed");
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
