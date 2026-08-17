@@ -27,17 +27,24 @@ VLAN_TUNNEL_MEDIUM_TYPE = "Tunnel-Medium-Type"
 VLAN_TUNNEL_GROUP_ID = "Tunnel-Private-Group-Id"
 ROLE_ATTRIBUTE = "Filter-Id"
 
-# Reply attributes that are either key material or protocol plumbing: never store
-# or display them as "what the NAS received".
+# Reply attributes that are either key material, protocol plumbing, or an echo of
+# the request: never store or display them as "what the NAS received". EAP-MSK /
+# EAP-EMSK / EAP-Session-Id are the session keys a successful EAP exchange derives
+# and must not be logged; User-Name is echoed back and says nothing about
+# authorization.
 SENSITIVE_REPLY_ATTRIBUTES = {
+    "eap-emsk",
     "eap-message",
+    "eap-msk",
+    "eap-session-id",
     "message-authenticator",
-    "ms-mppe-recv-key",
-    "ms-mppe-send-key",
     "ms-mppe-encryption-policy",
     "ms-mppe-encryption-types",
+    "ms-mppe-recv-key",
+    "ms-mppe-send-key",
     "proxy-state",
     "state",
+    "user-name",
 }
 
 # `%{pairs:reply:}` renders `Name = value, Name = "quoted value"`. Tunnel attributes

@@ -13,7 +13,12 @@ from app.schemas.entities import AuthEventRead
 router = APIRouter(prefix="/events", tags=["events"])
 
 
-def _to_event_read(event: AuthenticationEvent) -> AuthEventRead:
+def to_event_read(event: AuthenticationEvent) -> AuthEventRead:
+    """Serialize an event with its failure explanation attached.
+
+    Shared with the auth-test surface so a test result and the Events page describe
+    the same failure the same way.
+    """
     read = AuthEventRead.model_validate(event)
     explanation = explain_failure(event.failure_reason, event.method, event.result)
     if explanation is not None:
@@ -35,4 +40,4 @@ def list_events(
         stmt = stmt.where(AuthenticationEvent.lab_id == lab_id)
     if method:
         stmt = stmt.where(AuthenticationEvent.method == method)
-    return [_to_event_read(event) for event in db.scalars(stmt).all()]
+    return [to_event_read(event) for event in db.scalars(stmt).all()]

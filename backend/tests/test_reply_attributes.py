@@ -110,7 +110,19 @@ class TestSummarizeAttributes:
 class TestFilterReturnedAttributes:
     @pytest.mark.parametrize(
         "name",
-        ["MS-MPPE-Recv-Key", "ms-mppe-send-key", "EAP-Message", "State", "Proxy-State"],
+        [
+            "MS-MPPE-Recv-Key",
+            "ms-mppe-send-key",
+            "EAP-Message",
+            "State",
+            "Proxy-State",
+            # A successful EAP exchange derives these; they are session keys.
+            "EAP-MSK",
+            "EAP-EMSK",
+            "EAP-Session-Id",
+            # Echoed from the request, not an authorization decision.
+            "User-Name",
+        ],
     )
     def test_key_material_and_plumbing_is_dropped(self, name: str) -> None:
         assert filter_returned_attributes({name: "secret", "Filter-Id": "ok"}) == {

@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin
+from app.api.events import to_event_read
 from app.config import get_settings
 from app.db import get_db
 from app.integrations.ca import get_ca_adapter
@@ -186,11 +187,13 @@ def run_auth_test(
     event = _wait_for_event(
         db, identity=identity, method=method, timeout=8.0, started_at=test_started
     )
-    if event and event.returned_attributes and not reply_attributes:
-        # PEAP/EAP-TLS: eapol_test does not print the reply list, so take the
-        # attributes FreeRADIUS logged for this accept.
-        reply_attributes = dict(event.returned_attributes)
     actual_success = eapol.success
+    if actual_success and event and event.returned_attributes and not reply_attributes:
+        # PEAP/EAP-TLS: eapol_test does not print the reply list, so take the
+        # attributes FreeRADIUS logged for this accept. Only on success — a reject
+        # has no authorization, and borrowing from a near-simultaneous event for
+        # the same identity would attribute another run's attributes to this one.
+        reply_attributes = dict(event.returned_attributes)
     matched = (not actual_success) if expect_reject else actual_success
     result = "success" if actual_success else "failure"
     failure_reason = eapol.failure_reason
@@ -218,7 +221,7 @@ def run_auth_test(
                 else "Test executed inside Compose via eapol_test"
             ),
         ),
-        event=AuthEventRead.model_validate(event) if event else None,
+        event=to_event_read(event) if event else None,
         returned_attributes=reply_attributes,
     )
 

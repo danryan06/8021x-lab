@@ -85,6 +85,17 @@ class TestParseMabLines:
         assert parsed.result is AuthResult.failure
         assert parsed.failure_reason == "Authentication failed"
 
+    def test_reject_records_no_attributes_even_when_the_reply_list_has_some(self) -> None:
+        """A group lookup can stage attributes before auth fails; they were never sent."""
+        line = (
+            "DOT1X|1754226000|alice|10.0.0.10|PEAP|Access-Reject|mschap: FAILED||"
+            'Tunnel-Type = VLAN, Tunnel-Private-Group-Id = "20"'
+        )
+        parsed = parse_linelog_line(line)
+        assert parsed is not None
+        assert parsed.result is AuthResult.failure
+        assert parsed.returned_attributes == {}
+
     def test_eap_type_wins_over_service_type(self) -> None:
         """A PEAP request that also carries Service-Type must not be logged as MAB."""
         line = "DOT1X|1754226000|alice|10.0.0.10|PEAP|Access-Accept||Framed-User|"

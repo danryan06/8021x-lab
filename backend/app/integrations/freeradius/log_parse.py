@@ -77,5 +77,9 @@ def parse_linelog_line(line: str) -> ParsedAuthLine | None:
         result=AuthResult.success if success else AuthResult.failure,
         failure_reason=None if success else (failure or "Authentication failed"),
         raw=line,
-        returned_attributes=parse_attribute_pairs(reply_pairs),
+        # An Access-Reject grants no authorization. FreeRADIUS may still have
+        # attributes staged in the reply list when linelog runs (a group lookup
+        # ran before authentication failed), but they were never sent — recording
+        # them would show a VLAN the NAS never received.
+        returned_attributes=parse_attribute_pairs(reply_pairs) if success else {},
     )

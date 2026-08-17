@@ -28,9 +28,16 @@ from app.validation import normalize_mac
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Rejects FreeRADIUS could not attribute to a failing module arrive with this
-# placeholder; the control plane may know better (e.g. an unregistered MAC).
-_GENERIC_FAILURES = {"", "authentication failed"}
+# A MAB reject has no failing module — nothing matched the MAC, so no module ran.
+# FreeRADIUS reports that as "No Auth-Type found", or as nothing at all. The lab's
+# own endpoint list is the only place the real reason exists, so treat these as
+# unattributed and look it up.
+_UNATTRIBUTED_REJECTS = ("", "authentication failed", "no auth-type found")
+
+
+def _is_unattributed_reject(failure_reason: str | None) -> bool:
+    text = (failure_reason or "").strip().lower()
+    return any(needle in text for needle in _UNATTRIBUTED_REJECTS if needle) or not text
 
 
 def _resolve_lab_id(db: Session, nas_ip: str | None) -> UUID | None:
@@ -48,8 +55,8 @@ def _explain_mab_reject(
     identity: str | None,
     failure_reason: str | None,
 ) -> str | None:
-    """Replace a bare MAB reject with the reason from the lab's endpoint list."""
-    if (failure_reason or "").strip().lower() not in _GENERIC_FAILURES:
+    """Replace an unattributed MAB reject with the reason from the endpoint list."""
+    if not _is_unattributed_reject(failure_reason):
         return failure_reason
     if not identity:
         return failure_reason
