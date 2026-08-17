@@ -26,7 +26,10 @@ def create_client(
     db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ) -> RadiusClientRead:
-    return client_service.create_client(db, payload)
+    try:
+        return client_service.create_client(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{client_id}", response_model=RadiusClientRead)
@@ -51,7 +54,10 @@ def update_client(
     client = client_service.get_client(db, client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    return client_service.update_client(db, client, payload)
+    try:
+        return client_service.update_client(db, client, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)

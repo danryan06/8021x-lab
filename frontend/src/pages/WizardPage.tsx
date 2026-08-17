@@ -680,20 +680,25 @@ export function WizardPage() {
       setCreatedClient(client);
       setStatus("RADIUS client synced — FreeRADIUS reload requested.");
       next();
-    } catch {
+    } catch (err) {
       try {
+        // An address can only belong to one client, so a repeat run continues
+        // with whichever client already answers for this NAS.
         const clients = await apiFetch<RadiusClient[]>(`/clients?lab_id=${labId}`);
-        const existing = clients.find((c) => c.name === clientName);
+        const wanted = clientIp.trim().toLowerCase();
+        const existing =
+          clients.find((c) => c.ip_address.trim().toLowerCase() === wanted) ||
+          clients.find((c) => c.name === clientName);
         if (existing) {
           setCreatedClient(existing);
-          setStatus("Using existing RADIUS client.");
+          setStatus(`Using existing RADIUS client “${existing.name}” (${existing.ip_address}).`);
           next();
           return;
         }
       } catch {
         /* fall through */
       }
-      setError("Client create failed");
+      setError(err instanceof Error ? err.message : "Client create failed");
     } finally {
       setBusy(false);
     }
