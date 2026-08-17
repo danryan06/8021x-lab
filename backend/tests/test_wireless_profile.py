@@ -1,7 +1,10 @@
+from uuid import uuid4
+
 import pytest
 
 from app.models.entities import Lab
 from app.schemas.entities import WirelessProfile
+from app.services.labs import find_name_conflict
 from app.services.wireless import (
     SETTINGS_KEY,
     merge_profile,
@@ -122,6 +125,24 @@ class TestLabSettings:
         first = merge_profile({}, WirelessProfile(ssid="Old-SSID"))
         second = merge_profile(first, WirelessProfile(ssid="New-SSID"))
         assert second[SETTINGS_KEY]["ssid"] == "New-SSID"
+
+
+class TestFindNameConflict:
+    def test_an_existing_name_is_reported(self) -> None:
+        lab = Lab(id=uuid4(), name="Wireless lab")
+        assert find_name_conflict([lab], "Wireless lab") is lab
+
+    @pytest.mark.parametrize("name", ["  Wireless lab  ", "WIRELESS LAB", "wireless lab"])
+    def test_case_and_padding_do_not_make_a_new_name(self, name: str) -> None:
+        lab = Lab(id=uuid4(), name="Wireless lab")
+        assert find_name_conflict([lab], name) is lab
+
+    def test_a_free_name_has_no_conflict(self) -> None:
+        assert find_name_conflict([Lab(id=uuid4(), name="Wireless lab")], "Wired lab") is None
+
+    def test_renaming_a_lab_does_not_conflict_with_itself(self) -> None:
+        lab = Lab(id=uuid4(), name="Wireless lab")
+        assert find_name_conflict([lab], "Wireless lab", exclude_id=lab.id) is None
 
 
 class TestReadProfile:
