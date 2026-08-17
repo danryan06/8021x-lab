@@ -741,6 +741,36 @@ export function WizardPage() {
                 ? ` Client identity: ${certIdentity}.`
                 : ""}
             </p>
+            <div className="border border-ink/10 bg-mist/40 p-4 text-sm">
+              <p className="font-medium">Take it to real hardware</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink/75">
+                <li>
+                  Confirm the <strong>RADIUS target</strong> IP + shared secret on the Dashboard —
+                  that's what your switch/AP points at.
+                </li>
+                <li>
+                  Register the switch/AP under <Link className="underline" to="/clients">RADIUS
+                  Clients</Link> (its source IP + the shared secret).
+                </li>
+                {method === "eap_tls" ? (
+                  <li>
+                    Install the client certificate and lab root CA on the device (download them from{" "}
+                    <Link className="underline" to="/certificates">Certificates</Link>).
+                  </li>
+                ) : (
+                  <li>Enter a lab username/password on the device when it prompts for PEAP.</li>
+                )}
+                <li>Configure the switch port or WPA2/3-Enterprise SSID to use the lab RADIUS server.</li>
+              </ol>
+              <a
+                className="mt-2 inline-block underline"
+                href="https://github.com/danryan06/8021x-lab/blob/main/docs/deploying-to-devices.md"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Full guide: deploying to real devices →
+              </a>
+            </div>
             <div className="flex flex-wrap gap-3">
               <Link className="ui-btn-signal" to="/events">
                 Open Events
