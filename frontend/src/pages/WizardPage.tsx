@@ -319,12 +319,21 @@ export function WizardPage() {
   }, [method, steps.length]);
 
   useEffect(() => {
-    // A wireless lab registers a controller, not a switch — say so by default.
+    // A wireless lab registers a controller, not a switch — say so by default,
+    // and give it its own address, since one address can hold one client.
+    const wirelessMedium = medium === "wireless";
     setClientName((current) =>
       current === "lab-switch" || current === "lab-wlc"
-        ? medium === "wireless"
+        ? wirelessMedium
           ? "lab-wlc"
           : "lab-switch"
+        : current,
+    );
+    setClientIp((current) =>
+      current === "10.0.0.1" || current === "10.0.0.2"
+        ? wirelessMedium
+          ? "10.0.0.2"
+          : "10.0.0.1"
         : current,
     );
   }, [medium]);
@@ -682,16 +691,22 @@ export function WizardPage() {
       next();
     } catch (err) {
       try {
-        // An address can only belong to one client, so a repeat run continues
-        // with whichever client already answers for this NAS.
-        const clients = await apiFetch<RadiusClient[]>(`/clients?lab_id=${labId}`);
+        // One address can only hold one client, and FreeRADIUS serves every lab
+        // from that one entry — so continue with whichever client already
+        // answers for this NAS, wherever it lives.
+        const clients = await apiFetch<RadiusClient[]>("/clients");
         const wanted = clientIp.trim().toLowerCase();
         const existing =
           clients.find((c) => c.ip_address.trim().toLowerCase() === wanted) ||
-          clients.find((c) => c.name === clientName);
+          clients.find((c) => c.lab_id === labId && c.name === clientName);
         if (existing) {
           setCreatedClient(existing);
-          setStatus(`Using existing RADIUS client “${existing.name}” (${existing.ip_address}).`);
+          const owner = labs.find((lab) => lab.id === existing.lab_id);
+          const elsewhere =
+            existing.lab_id !== labId && owner ? ` — registered in lab “${owner.name}”` : "";
+          setStatus(
+            `Using existing RADIUS client “${existing.name}” (${existing.ip_address})${elsewhere}.`,
+          );
           next();
           return;
         }
@@ -702,6 +717,12 @@ export function WizardPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function skipClient() {
+    setError(null);
+    setStatus(null);
+    next();
   }
 
   async function runTest() {
@@ -1275,9 +1296,18 @@ export function WizardPage() {
                 onChange={(e) => setClientSecret(e.target.value)}
               />
             </Field>
-            <Button disabled={busy} onClick={createClient}>
-              Create client & sync
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={busy} onClick={createClient}>
+                Create client & sync
+              </Button>
+              <Button variant="ghost" disabled={busy} onClick={skipClient}>
+                Skip for now
+              </Button>
+            </div>
+            <p className="text-sm text-ink/55">
+              The test on the next step runs inside Compose and does not need this client — it is
+              for the real {wireless ? "AP/WLC" : "switch"} when you have one.
+            </p>
           </div>
         )}
 
