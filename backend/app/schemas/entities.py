@@ -243,6 +243,7 @@ class GenerateEndpointsRequest(BaseModel):
     oui: str = Field(default="02:1a:2b", max_length=32)
     device_type: str | None = Field(default=None, max_length=64)
     # Mix device types from a lab-friendly list (printer, camera, voip, …).
+    # Ignored when device_type names one explicitly.
     mixed_device_types: bool = True
     authz_policy_id: UUID | None = None
     enabled: bool = True

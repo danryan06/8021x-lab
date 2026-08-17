@@ -45,6 +45,19 @@ DEVICE_TYPES = [
 _MAC_SPLIT = re.compile(r"[\s,;]+")
 
 
+def choose_device_type(device_type: str | None, mixed: bool) -> str | None:
+    """Pick the device type for one generated endpoint.
+
+    An explicit `device_type` pins every endpoint to it; mixing only applies when
+    the caller did not name one.
+    """
+    if device_type:
+        return device_type
+    if mixed:
+        return secrets.choice(DEVICE_TYPES)
+    return None
+
+
 def list_endpoints(db: Session, lab_id: UUID | None = None) -> list[Endpoint]:
     stmt = select(Endpoint).order_by(Endpoint.mac_address)
     if lab_id:
@@ -219,10 +232,7 @@ def generate_endpoints(db: Session, payload: GenerateEndpointsRequest) -> list[E
         if mac in existing:
             continue
         existing.add(mac)
-        if payload.mixed_device_types:
-            device_type = secrets.choice(DEVICE_TYPES)
-        else:
-            device_type = payload.device_type
+        device_type = choose_device_type(payload.device_type, payload.mixed_device_types)
         index = len(created) + 1
         endpoint = Endpoint(
             lab_id=payload.lab_id,

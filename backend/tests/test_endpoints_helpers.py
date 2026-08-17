@@ -1,6 +1,11 @@
 import pytest
 
-from app.services.endpoints import DEVICE_TYPES, parse_mac_list, random_mac
+from app.services.endpoints import (
+    DEVICE_TYPES,
+    choose_device_type,
+    parse_mac_list,
+    random_mac,
+)
 from app.validation import normalize_mac
 
 
@@ -72,3 +77,19 @@ class TestRandomMac:
 def test_device_types_are_devices_that_cannot_do_8021x() -> None:
     assert "printer" in DEVICE_TYPES
     assert all(t == t.lower() and " " not in t for t in DEVICE_TYPES)
+
+
+class TestChooseDeviceType:
+    def test_explicit_type_wins_over_the_mixing_default(self) -> None:
+        assert choose_device_type("voip-phone", mixed=True) == "voip-phone"
+
+    def test_explicit_type_is_used_when_not_mixing(self) -> None:
+        assert choose_device_type("printer", mixed=False) == "printer"
+
+    def test_mixing_picks_from_the_lab_device_list(self) -> None:
+        picks = {choose_device_type(None, mixed=True) for _ in range(60)}
+        assert picks <= set(DEVICE_TYPES)
+        assert len(picks) > 1
+
+    def test_no_type_and_no_mixing_leaves_it_unset(self) -> None:
+        assert choose_device_type(None, mixed=False) is None
