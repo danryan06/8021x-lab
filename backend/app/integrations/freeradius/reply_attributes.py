@@ -40,8 +40,14 @@ SENSITIVE_REPLY_ATTRIBUTES = {
     "state",
 }
 
-# `%{pairs:reply:}` renders `Name = value, Name = "quoted value"`.
-_PAIR_SPLIT = re.compile(r",\s*(?=[A-Za-z][A-Za-z0-9-]*\s*=)")
+# `%{pairs:reply:}` renders `Name = value, Name = "quoted value"`. Tunnel attributes
+# may carry a tag (`Tunnel-Type:0`), which radclient prints and which must not be
+# mistaken for the end of the previous value.
+_PAIR_SPLIT = re.compile(r",\s*(?=[A-Za-z][A-Za-z0-9-]*(?::\d+)?\s*=)")
+
+# Tag suffix on tunnel attributes; the tag groups attributes into one tunnel and
+# carries no meaning for "what did the NAS receive".
+_ATTRIBUTE_TAG = re.compile(r":\d+$")
 
 # Common reply attributes, shown in the Advanced policy editor so the RADIUS
 # names are visible rather than hidden behind lab jargon.
@@ -201,7 +207,7 @@ def parse_attribute_pairs(text: str) -> dict:
         if not item or "=" not in item:
             continue
         name, _, value = item.partition("=")
-        name = name.strip()
+        name = _ATTRIBUTE_TAG.sub("", name.strip())
         if not name:
             continue
         value = value.strip().strip('"')

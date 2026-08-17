@@ -47,6 +47,69 @@ class TestParseLinelogLine:
     def test_non_matching_lines_return_none(self, line: str) -> None:
         assert parse_linelog_line(line) is None
 
+    def test_pre_phase3_lines_still_parse_without_attributes(self) -> None:
+        parsed = parse_linelog_line("DOT1X|1754226000|alice|10.0.0.10|PEAP|Access-Accept|")
+        assert parsed is not None
+        assert parsed.returned_attributes == {}
+
+
+class TestParseMabLines:
+    MAB_ACCEPT = (
+        "DOT1X|1754226000|aa:bb:cc:dd:ee:ff|172.18.0.4||Access-Accept||Call-Check|"
+        'Tunnel-Type = VLAN, Tunnel-Medium-Type = IEEE-802, '
+        'Tunnel-Private-Group-Id = "40", Filter-Id = "printer-acl"'
+    )
+
+    def test_call_check_without_eap_type_is_mab(self) -> None:
+        parsed = parse_linelog_line(self.MAB_ACCEPT)
+        assert parsed is not None
+        assert parsed.method is AuthMethod.mab
+        assert parsed.identity == "aa:bb:cc:dd:ee:ff"
+        assert parsed.result is AuthResult.success
+
+    def test_returned_attributes_are_parsed(self) -> None:
+        parsed = parse_linelog_line(self.MAB_ACCEPT)
+        assert parsed is not None
+        assert parsed.returned_attributes == {
+            "Tunnel-Type": "VLAN",
+            "Tunnel-Medium-Type": "IEEE-802",
+            "Tunnel-Private-Group-Id": "40",
+            "Filter-Id": "printer-acl",
+        }
+
+    def test_mab_reject_keeps_method_and_failure(self) -> None:
+        line = "DOT1X|1754226000|de:ad:be:ef:00:01|172.18.0.4||Access-Reject||Call-Check|"
+        parsed = parse_linelog_line(line)
+        assert parsed is not None
+        assert parsed.method is AuthMethod.mab
+        assert parsed.result is AuthResult.failure
+        assert parsed.failure_reason == "Authentication failed"
+
+    def test_eap_type_wins_over_service_type(self) -> None:
+        """A PEAP request that also carries Service-Type must not be logged as MAB."""
+        line = "DOT1X|1754226000|alice|10.0.0.10|PEAP|Access-Accept||Framed-User|"
+        parsed = parse_linelog_line(line)
+        assert parsed is not None
+        assert parsed.method is AuthMethod.peap
+
+    def test_pipe_inside_an_attribute_value_does_not_truncate_the_list(self) -> None:
+        line = (
+            "DOT1X|1754226000|aa:bb:cc:dd:ee:ff|172.18.0.4||Access-Accept||Call-Check|"
+            'Reply-Message = "a|b", Filter-Id = "r"'
+        )
+        parsed = parse_linelog_line(line)
+        assert parsed is not None
+        assert parsed.returned_attributes == {"Reply-Message": "a|b", "Filter-Id": "r"}
+
+    def test_key_material_is_never_stored_on_the_event(self) -> None:
+        line = (
+            "DOT1X|1754226000|alice|10.0.0.10|PEAP|Access-Accept|||"
+            "MS-MPPE-Recv-Key = 0xdeadbeef, Filter-Id = \"corp\""
+        )
+        parsed = parse_linelog_line(line)
+        assert parsed is not None
+        assert parsed.returned_attributes == {"Filter-Id": "corp"}
+
 
 class TestMapMethod:
     @pytest.mark.parametrize(
@@ -66,3 +129,17 @@ class TestMapMethod:
     )
     def test_mapping(self, eap_type: str, expected: AuthMethod) -> None:
         assert _map_method(eap_type) is expected
+
+    @pytest.mark.parametrize(
+        ("service_type", "expected"),
+        [
+            ("Call-Check", AuthMethod.mab),
+            ("call-check", AuthMethod.mab),
+            ("Framed-User", AuthMethod.unknown),
+            ("", AuthMethod.unknown),
+        ],
+    )
+    def test_service_type_identifies_mab_when_there_is_no_eap(
+        self, service_type: str, expected: AuthMethod
+    ) -> None:
+        assert _map_method("", service_type) is expected

@@ -17,7 +17,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.integrations.ca import get_ca_adapter
 from app.integrations.freeradius.eapol import resolve_radius_host, run_eap_tls_test, run_peap_test
-from app.integrations.freeradius.mab import mab_reject_reason, mac_radius_usernames, run_mab_test
+from app.integrations.freeradius.mab import mab_reject_reason, run_mab_test
 from app.integrations.freeradius.tls_trust import publish_lab_ca
 from app.models.entities import AuthenticationEvent, AuthMethod, Endpoint, RadiusUser, UserStatus
 from app.schemas.entities import AuthEventRead

@@ -15,7 +15,14 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.integrations.freeradius.log_parse import parse_linelog_line
 from app.integrations.freeradius.mab import mab_reject_reason
-from app.models.entities import AuthenticationEvent, AuthMethod, AuthResult, Endpoint, Lab, RadiusClient
+from app.models.entities import (
+    AuthenticationEvent,
+    AuthMethod,
+    AuthResult,
+    Endpoint,
+    Lab,
+    RadiusClient,
+)
 from app.validation import normalize_mac
 
 logger = logging.getLogger(__name__)

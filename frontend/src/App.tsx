@@ -6,8 +6,10 @@ import { AuthTestPage } from "./pages/AuthTestPage";
 import { CertificatesPage } from "./pages/CertificatesPage";
 import { ClientsPage } from "./pages/ClientsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { EndpointsPage } from "./pages/EndpointsPage";
 import { EventsPage } from "./pages/EventsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { PoliciesPage } from "./pages/PoliciesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { WizardPage } from "./pages/WizardPage";
 
@@ -32,6 +34,8 @@ export default function App() {
         <Route index element={<DashboardPage />} />
         <Route path="test" element={<AuthTestPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="endpoints" element={<EndpointsPage />} />
+        <Route path="policies" element={<PoliciesPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="certificates" element={<CertificatesPage />} />
         <Route path="events" element={<EventsPage />} />
