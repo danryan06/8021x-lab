@@ -1,11 +1,34 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.entities import AuthMethod, AuthResult, UserStatus
+from app.validation import normalize_ssid
+
+
+class WirelessProfile(BaseModel):
+    """The wireless side of a lab: the SSID a WPA2/3-Enterprise flow set up.
+
+    Stored inside a lab's free-form ``settings`` so the UI can rebuild the
+    controller checklist later, and validated here because these values are
+    typed into real radio configuration.
+    """
+
+    ssid: str
+    security: Literal["wpa2_enterprise", "wpa3_enterprise"] = "wpa2_enterprise"
+    # Filled in when the flow also created an authorization policy, so the
+    # summary can say which VLAN a joining client should land in.
+    vlan: int | None = Field(default=None, ge=1, le=4094)
+    user_group: str | None = Field(default=None, max_length=128)
+
+    @field_validator("ssid")
+    @classmethod
+    def _normalize_ssid(cls, value: str) -> str:
+        return normalize_ssid(value)
 
 
 class LabBase(BaseModel):

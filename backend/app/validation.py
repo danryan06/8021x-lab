@@ -23,6 +23,11 @@ _ATTRIBUTE_NAME_RE = re.compile(ATTRIBUTE_NAME_PATTERN)
 # newline or quote would inject extra attributes into the request.
 _ATTRIBUTE_VALUE_UNSAFE = re.compile(r'["\r\n]')
 
+# 802.11 carries the SSID as an information element of at most 32 octets, so the
+# limit is on encoded bytes rather than characters.
+SSID_MAX_BYTES = 32
+_SSID_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def validate_identity(identity: str) -> str:
     """Validate a certificate identity used in file paths; raise ValueError if unsafe."""
@@ -60,6 +65,26 @@ def normalize_mac(value: str) -> str:
         )
     lowered = hex_digits.lower()
     return ":".join(lowered[i : i + 2] for i in range(0, 12, 2))
+
+
+def normalize_ssid(value: str) -> str:
+    """Return a usable SSID, or raise ValueError explaining what a radio accepts.
+
+    Surrounding whitespace is stripped because it is invisible in the UI and a
+    device would join a different network than the operator thinks they typed.
+    """
+    ssid = (value or "").strip()
+    if not ssid:
+        raise ValueError("SSID is required")
+    if _SSID_CONTROL_CHARS.search(ssid):
+        raise ValueError("SSID must not contain control characters")
+    encoded = len(ssid.encode("utf-8"))
+    if encoded > SSID_MAX_BYTES:
+        raise ValueError(
+            f"SSID is {encoded} bytes — 802.11 allows at most {SSID_MAX_BYTES} "
+            "(accented and emoji characters cost more than one byte each)"
+        )
+    return ssid
 
 
 def validate_attribute_name(name: str) -> str:

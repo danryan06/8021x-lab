@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin
 from app.db import get_db
-from app.schemas.entities import LabCreate, LabRead, LabUpdate
+from app.schemas.entities import LabCreate, LabRead, LabUpdate, WirelessProfile
 from app.services import labs as lab_service
+from app.services import wireless as wireless_service
 
 router = APIRouter(prefix="/labs", tags=["labs"])
 
@@ -22,7 +23,10 @@ def create_lab(
     db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ) -> LabRead:
-    return lab_service.create_lab(db, payload)
+    try:
+        return lab_service.create_lab(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{lab_id}", response_model=LabRead)
@@ -47,7 +51,24 @@ def update_lab(
     lab = lab_service.get_lab(db, lab_id)
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
-    return lab_service.update_lab(db, lab, payload)
+    try:
+        return lab_service.update_lab(db, lab, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/{lab_id}/wireless-profile", response_model=LabRead)
+def put_wireless_profile(
+    lab_id: UUID,
+    payload: WirelessProfile,
+    db: Session = Depends(get_db),
+    _admin=Depends(get_current_admin),
+) -> LabRead:
+    """Record the SSID a wireless flow set up, leaving other settings alone."""
+    lab = lab_service.get_lab(db, lab_id)
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    return wireless_service.set_profile(db, lab, payload)
 
 
 @router.delete("/{lab_id}", status_code=status.HTTP_204_NO_CONTENT)
