@@ -4,15 +4,31 @@ import {
   apiDownload,
   apiFetch,
   type AuthTestResponse,
+  type AuthzPolicy,
+  type Endpoint,
   type Lab,
   type RadiusClient,
   type RadiusUser,
 } from "../api/client";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
-import { Button, Field, InfoTip, PageHeader, Panel, StatusBanner } from "../components/ui";
+import {
+  Button,
+  Field,
+  InfoTip,
+  PageHeader,
+  Panel,
+  ReplyAttributes,
+  StatusBanner,
+} from "../components/ui";
 
 type AuthMethod = "peap" | "eap_tls" | "mab";
 type Medium = "wired" | "wireless" | "both";
+
+const METHOD_LABELS: Record<AuthMethod, string> = {
+  peap: "PEAP",
+  eap_tls: "EAP-TLS",
+  mab: "MAB",
+};
 
 type StepId =
   | "medium"
@@ -21,6 +37,8 @@ type StepId =
   | "user"
   | "ca"
   | "cert"
+  | "policy"
+  | "endpoint"
   | "client"
   | "test"
   | "done";
@@ -48,12 +66,24 @@ const TLS_STEPS: Step[] = [
   { id: "done", label: "View events" },
 ];
 
+const MAB_STEPS: Step[] = [
+  { id: "medium", label: "Select medium" },
+  { id: "method", label: "Select authentication type" },
+  { id: "lab", label: "Create or select lab" },
+  { id: "policy", label: "Create authorization policy" },
+  { id: "endpoint", label: "Register endpoint MAC" },
+  { id: "client", label: "Create RADIUS client" },
+  { id: "test", label: "Run MAB test" },
+  { id: "done", label: "View events" },
+];
+
 type StepHelp = { what: string; configuring: string; next: string };
 
 // Per-step explanations shown in the fly-out: what the step does, what it
 // actually configures, and what to do next. Kept plain-language for newcomers.
 function stepHelp(id: StepId, method: AuthMethod): StepHelp {
   const peap = method === "peap";
+  const mab = method === "mab";
   switch (id) {
     case "medium":
       return {
@@ -64,9 +94,9 @@ function stepHelp(id: StepId, method: AuthMethod): StepHelp {
       };
     case "method":
       return {
-        what: "Chooses the EAP method this lab demonstrates: PEAP (username/password) or EAP-TLS (client certificates).",
+        what: "Chooses how this lab authenticates: PEAP (username/password), EAP-TLS (client certificates), or MAB (MAC address only).",
         configuring:
-          "Which steps you'll see next — PEAP adds a user; EAP-TLS adds a CA plus a client certificate. MAB is planned for a later phase.",
+          "Which steps you'll see next — PEAP adds a user; EAP-TLS adds a CA plus a client certificate; MAB adds an authorization policy plus a registered MAC.",
         next: "Create or select the lab that will own these objects.",
       };
     case "lab":
@@ -74,7 +104,25 @@ function stepHelp(id: StepId, method: AuthMethod): StepHelp {
         what: "Creates or reuses an isolated lab environment that owns your users, clients, certificates, and events.",
         configuring:
           "A Lab record in the database only — nothing is sent to FreeRADIUS yet. Reusing a lab keeps everything already in it.",
-        next: peap ? "Add a PEAP user." : "Create the lab's root certificate authority.",
+        next: mab
+          ? "Create the authorization policy that says which VLAN and role the device gets."
+          : peap
+            ? "Add a PEAP user."
+            : "Create the lab's root certificate authority.",
+      };
+    case "policy":
+      return {
+        what: "Creates an authorization policy — the VLAN and role FreeRADIUS returns when this device is accepted.",
+        configuring:
+          "A policy record whose VLAN becomes the Tunnel-Type / Tunnel-Medium-Type / Tunnel-Private-Group-Id triplet, and whose role becomes Filter-Id. Nothing reaches FreeRADIUS until an endpoint or group uses the policy.",
+        next: "Register the MAC address that this policy should apply to.",
+      };
+    case "endpoint":
+      return {
+        what: "Registers a device's MAC address so MAB can authenticate it, and attaches the authorization policy.",
+        configuring:
+          "An endpoint row, plus radcheck entries (Auth-Type := Accept) under every common MAC spelling and radreply entries carrying the policy's attributes. This takes effect on the next request — no FreeRADIUS restart needed.",
+        next: "Register the RADIUS client for your switch/AP, or skip ahead to the test.",
       };
     case "user":
       return {
@@ -106,10 +154,14 @@ function stepHelp(id: StepId, method: AuthMethod): StepHelp {
       };
     case "test":
       return {
-        what: "Runs a live authentication against FreeRADIUS using eapol_test from inside the backend container.",
+        what: mab
+          ? "Sends a real MAB Access-Request with radclient from inside the backend container — the MAC as User-Name and Service-Type = Call-Check, exactly as a switch would."
+          : "Runs a live authentication against FreeRADIUS using eapol_test from inside the backend container.",
         configuring:
           "Nothing new — it exercises everything you just set up and produces a real Access-Accept/Reject plus an authentication event.",
-        next: "On success, view the ingested record under Events.",
+        next: mab
+          ? "On success, check the returned VLAN and role, then view the ingested record under Events."
+          : "On success, view the ingested record under Events.",
       };
     case "done":
       return {
@@ -147,6 +199,13 @@ export function WizardPage() {
   const [certIdentity, setCertIdentity] = useState("tlsuser");
   const [caInfo, setCaInfo] = useState<string | null>(null);
   const [certInfo, setCertInfo] = useState<string | null>(null);
+  const [policyName, setPolicyName] = useState("Printers VLAN 40");
+  const [policyVlan, setPolicyVlan] = useState("40");
+  const [policyRole, setPolicyRole] = useState("printer-acl");
+  const [createdPolicy, setCreatedPolicy] = useState<AuthzPolicy | null>(null);
+  const [endpointMac, setEndpointMac] = useState("aa:bb:cc:dd:ee:ff");
+  const [endpointDescription, setEndpointDescription] = useState("Lobby printer");
+  const [createdEndpoint, setCreatedEndpoint] = useState<Endpoint | null>(null);
   const [clientName, setClientName] = useState("lab-switch");
   const [clientIp, setClientIp] = useState("10.0.0.1");
   const [clientSecret, setClientSecret] = useState("testing123");
@@ -158,6 +217,7 @@ export function WizardPage() {
 
   const steps = useMemo(() => {
     if (method === "eap_tls") return TLS_STEPS;
+    if (method === "mab") return MAB_STEPS;
     return PEAP_STEPS;
   }, [method]);
 
@@ -175,10 +235,14 @@ export function WizardPage() {
   useEffect(() => {
     // Keep step index valid when switching method mid-flow.
     setStepIndex((i) => Math.min(i, steps.length - 1));
-    if (method === "peap") setLabName((n) => (n.includes("EAP-TLS") ? "My first PEAP lab" : n));
-    if (method === "eap_tls") {
-      setLabName((n) => (n.includes("PEAP") ? "My first EAP-TLS lab" : n));
-    }
+    const defaultNames: Record<AuthMethod, string> = {
+      peap: "My first PEAP lab",
+      eap_tls: "My first EAP-TLS lab",
+      mab: "My first MAB lab",
+    };
+    setLabName((current) =>
+      Object.values(defaultNames).includes(current) ? defaultNames[method] : current,
+    );
   }, [method, steps.length]);
 
   function next() {
@@ -307,6 +371,90 @@ export function WizardPage() {
     }
   }
 
+  async function createPolicy() {
+    if (!labId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const policy = await apiFetch<AuthzPolicy>("/authz-policies", {
+        method: "POST",
+        body: JSON.stringify({
+          lab_id: labId,
+          name: policyName,
+          vlan: policyVlan ? Number(policyVlan) : null,
+          role: policyRole || null,
+        }),
+      });
+      setCreatedPolicy(policy);
+      setStatus(`Policy “${policy.name}” created — returns ${policy.summary}.`);
+      next();
+    } catch {
+      // A repeated run of the guided flow should reuse the policy it made last time.
+      try {
+        const policies = await apiFetch<AuthzPolicy[]>(`/authz-policies?lab_id=${labId}`);
+        const existing = policies.find((p) => p.name === policyName);
+        if (existing) {
+          setCreatedPolicy(existing);
+          setStatus(`Using existing policy “${existing.name}” — returns ${existing.summary}.`);
+          next();
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+      setError("Authorization policy create failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createEndpoint() {
+    if (!labId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const endpoint = await apiFetch<Endpoint>("/endpoints", {
+        method: "POST",
+        body: JSON.stringify({
+          lab_id: labId,
+          mac_address: endpointMac,
+          description: endpointDescription || null,
+          device_type: "printer",
+          authz_policy_id: createdPolicy?.id || null,
+          enabled: true,
+        }),
+      });
+      setCreatedEndpoint(endpoint);
+      setStatus(`Endpoint ${endpoint.mac_address} registered and synced to FreeRADIUS.`);
+      next();
+    } catch {
+      try {
+        const endpoints = await apiFetch<Endpoint[]>(`/endpoints?lab_id=${labId}`);
+        const digits = endpointMac.replace(/[^0-9a-f]/gi, "").toLowerCase();
+        const existing = endpoints.find((e) => e.mac_address.replace(/:/g, "") === digits);
+        if (existing) {
+          // Re-point the existing endpoint at this run's policy so the test shows it.
+          const updated = await apiFetch<Endpoint>(`/endpoints/${existing.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              authz_policy_id: createdPolicy?.id || null,
+              enabled: true,
+            }),
+          });
+          setCreatedEndpoint(updated);
+          setStatus(`Reused endpoint ${updated.mac_address} and synced to FreeRADIUS.`);
+          next();
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+      setError("Endpoint create failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function createClient() {
     if (!labId) return;
     setBusy(true);
@@ -356,21 +504,26 @@ export function WizardPage() {
               method: "eap_tls" as const,
               cert_identity: certIdentity,
             }
-          : {
-              lab_id: labId,
-              method: "peap" as const,
-              user_id: createdUser?.id,
-              password,
-            };
+          : method === "mab"
+            ? {
+                lab_id: labId,
+                method: "mab" as const,
+                endpoint_id: createdEndpoint?.id,
+                mac_address: createdEndpoint ? undefined : endpointMac,
+              }
+            : {
+                lab_id: labId,
+                method: "peap" as const,
+                user_id: createdUser?.id,
+                password,
+              };
       const res = await apiFetch<AuthTestResponse>("/auth-tests", {
         method: "POST",
         body: JSON.stringify(body),
       });
       setTestResult(res);
       if (res.matched_expectation && res.result === "success") {
-        setStatus(
-          `${method === "eap_tls" ? "EAP-TLS" : "PEAP"} Accept — check Events for the ingested record.`,
-        );
+        setStatus(`${METHOD_LABELS[method]} Accept — check Events for the ingested record.`);
         next();
       } else {
         setError(res.failure_reason || "Authentication did not succeed");
@@ -382,51 +535,14 @@ export function WizardPage() {
     }
   }
 
-  // MAB remains deferred after method selection.
-  if (method === "mab" && stepIndex >= 2) {
-    return (
-      <div className="page-enter space-y-6">
-        <PageHeader
-          title="Create your first 802.1X lab"
-          subtitle="MAB (MAC Authentication Bypass) arrives in Phase 3."
-        />
-        <Panel>
-          <h2 className="font-semibold">MAB — Phase 3</h2>
-          <p className="mt-2 text-sm text-ink/70">
-            Endpoint (MAC) management and authorization reply attributes are planned next.
-            PEAP and EAP-TLS first-lab paths are available now.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Button
-              variant="signal"
-              onClick={() => {
-                setMethod("peap");
-                setStepIndex(0);
-              }}
-            >
-              Switch to PEAP path
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setMethod("eap_tls");
-                setStepIndex(0);
-              }}
-            >
-              Switch to EAP-TLS path
-            </Button>
-          </div>
-        </Panel>
-      </div>
-    );
-  }
-
   const showGenericNav = current === "medium" || current === "method";
   const showBackOnly =
     current === "lab" ||
     current === "user" ||
     current === "ca" ||
     current === "cert" ||
+    current === "policy" ||
+    current === "endpoint" ||
     current === "client" ||
     current === "test";
 
@@ -437,7 +553,9 @@ export function WizardPage() {
         subtitle={
           method === "eap_tls"
             ? "Guided EAP-TLS path — lab CA, client cert, RADIUS client, live test, then Events."
-            : "Guided PEAP path — lab, user, RADIUS client, live auth test, then Events."
+            : method === "mab"
+              ? "Guided MAB path — authorization policy, endpoint MAC, RADIUS client, live test, then Events."
+              : "Guided PEAP path — lab, user, RADIUS client, live auth test, then Events."
         }
       />
 
@@ -503,7 +621,7 @@ export function WizardPage() {
                 [
                   ["peap", "PEAP (username / password)"],
                   ["eap_tls", "EAP-TLS (certificates)"],
-                  ["mab", "MAB — Phase 3"],
+                  ["mab", "MAB (MAC address only — for devices that cannot do 802.1X)"],
                 ] as const
               ).map(([value, label]) => (
                 <label key={value} className="flex items-center gap-2 text-sm">
@@ -659,6 +777,100 @@ export function WizardPage() {
           </div>
         )}
 
+        {current === "policy" && (
+          <div className="space-y-3">
+            <h2 className="flex items-center gap-2 font-semibold">
+              Create authorization policy
+              <StepTip id="policy" method={method} label="Create authorization policy" />
+            </h2>
+            <p className="text-sm text-ink/70">
+              Authentication answers “is this device allowed?”. Authorization answers “and what
+              access does it get?” — the VLAN and role FreeRADIUS returns with the Access-Accept.
+            </p>
+            <Field label="Policy name">
+              <input
+                className="ui-input"
+                value={policyName}
+                onChange={(e) => setPolicyName(e.target.value)}
+              />
+            </Field>
+            <Field label="VLAN">
+              <input
+                className="ui-input"
+                inputMode="numeric"
+                value={policyVlan}
+                onChange={(e) => setPolicyVlan(e.target.value)}
+                placeholder="40"
+              />
+            </Field>
+            <Field label="Role (returned as Filter-Id)">
+              <input
+                className="ui-input"
+                value={policyRole}
+                onChange={(e) => setPolicyRole(e.target.value)}
+                placeholder="printer-acl"
+              />
+            </Field>
+            {createdPolicy && (
+              <p className="text-xs text-ink/60">
+                Returns: <ReplyAttributes
+                  attributes={Object.fromEntries(
+                    createdPolicy.rendered_attributes.map((a) => [a.name, a.value]),
+                  )}
+                />
+              </p>
+            )}
+            <Button disabled={busy || !policyName} variant="signal" onClick={createPolicy}>
+              {busy ? "Working…" : "Create policy"}
+            </Button>
+          </div>
+        )}
+
+        {current === "endpoint" && (
+          <div className="space-y-3">
+            <h2 className="flex items-center gap-2 font-semibold">
+              Register endpoint MAC
+              <StepTip id="endpoint" method={method} label="Register endpoint MAC" />
+            </h2>
+            <p className="text-sm text-ink/70">
+              MAB authenticates a device by its MAC address alone — no certificate, no password.
+              That makes it easy to spoof, so treat it as inventory control for devices that cannot
+              run a supplicant, and give those devices a restricted VLAN.
+            </p>
+            <Field label="MAC address">
+              <input
+                className="ui-input font-mono"
+                value={endpointMac}
+                onChange={(e) => setEndpointMac(e.target.value)}
+                placeholder="aa:bb:cc:dd:ee:ff"
+              />
+            </Field>
+            <Field label="Description">
+              <input
+                className="ui-input"
+                value={endpointDescription}
+                onChange={(e) => setEndpointDescription(e.target.value)}
+              />
+            </Field>
+            <p className="text-sm text-ink/60">
+              Authorization policy:{" "}
+              {createdPolicy ? (
+                <span className="font-medium text-ink">{createdPolicy.name}</span>
+              ) : (
+                "none (the device will be accepted with no VLAN or role)"
+              )}
+            </p>
+            {createdEndpoint && (
+              <p className="font-mono text-xs text-ink/60">
+                Registered in FreeRADIUS as: {createdEndpoint.radius_usernames.join(", ")}
+              </p>
+            )}
+            <Button disabled={busy || !endpointMac} variant="signal" onClick={createEndpoint}>
+              {busy ? "Working…" : "Register endpoint & sync"}
+            </Button>
+          </div>
+        )}
+
         {current === "client" && (
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
@@ -700,7 +912,7 @@ export function WizardPage() {
         {current === "test" && (
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
-              Run {method === "eap_tls" ? "EAP-TLS" : "PEAP"} test
+              Run {METHOD_LABELS[method]} test
               <StepTip id="test" method={method} label="Run authentication test" />
             </h2>
             <p className="text-sm text-ink/70">
@@ -708,6 +920,11 @@ export function WizardPage() {
                 <>
                   Tests certificate identity <code>{certIdentity}</code> against FreeRADIUS via
                   eapol_test inside Compose.
+                </>
+              ) : method === "mab" ? (
+                <>
+                  Tests MAC <code>{createdEndpoint?.mac_address || endpointMac}</code> against
+                  FreeRADIUS via radclient inside Compose.
                 </>
               ) : (
                 <>
@@ -720,10 +937,24 @@ export function WizardPage() {
               {busy ? "Running…" : "Run authentication test"}
             </Button>
             {testResult && (
-              <p className={testResult.result === "success" ? "text-signal" : "text-fail"}>
-                {testResult.result === "success" ? "Access-Accept" : "Access-Reject"}
-                {testResult.failure_reason ? ` — ${testResult.failure_reason}` : ""}
-              </p>
+              <div className="space-y-2">
+                <p className={testResult.result === "success" ? "text-signal" : "text-fail"}>
+                  {testResult.result === "success" ? "Access-Accept" : "Access-Reject"}
+                  {testResult.failure_reason ? ` — ${testResult.failure_reason}` : ""}
+                </p>
+                {testResult.result === "success" && (
+                  <p className="flex flex-wrap items-center gap-2 text-sm text-ink/70">
+                    The NAS received:
+                    <ReplyAttributes
+                      attributes={
+                        Object.keys(testResult.returned_attributes).length > 0
+                          ? testResult.returned_attributes
+                          : testResult.event?.returned_attributes
+                      }
+                    />
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -735,10 +966,15 @@ export function WizardPage() {
               <StepTip id="done" method={method} label="View events" />
             </h2>
             <p className="text-sm text-ink/70">
-              Your {method === "eap_tls" ? "EAP-TLS" : "PEAP"} lab is live
+              Your {METHOD_LABELS[method]} lab is live
               {createdClient ? ` (NAS client: ${createdClient.name})` : ""}.
-              {method === "eap_tls" && certIdentity
-                ? ` Client identity: ${certIdentity}.`
+              {method === "eap_tls" && certIdentity ? ` Client identity: ${certIdentity}.` : ""}
+              {method === "mab" && createdEndpoint
+                ? ` Endpoint: ${createdEndpoint.mac_address}${
+                    createdEndpoint.authz_policy_name
+                      ? ` · policy ${createdEndpoint.authz_policy_name}`
+                      : ""
+                  }.`
                 : ""}
             </p>
             <div className="border border-ink/10 bg-mist/40 p-4 text-sm">
@@ -756,6 +992,11 @@ export function WizardPage() {
                   <li>
                     Install the client certificate and lab root CA on the device (download them from{" "}
                     <Link className="underline" to="/certificates">Certificates</Link>).
+                  </li>
+                ) : method === "mab" ? (
+                  <li>
+                    Enable MAB on the switch port (as a fallback after 802.1X times out) and make
+                    sure the VLAN this policy returns exists on the switch.
                   </li>
                 ) : (
                   <li>Enter a lab username/password on the device when it prompts for PEAP.</li>
