@@ -136,6 +136,16 @@ export async function login(username: string, password: string): Promise<string>
   return data.access_token;
 }
 
+export type WirelessSecurity = "wpa2_enterprise" | "wpa3_enterprise";
+
+/** The SSID a lab's guided wireless flow set up, stored in `Lab.settings`. */
+export type WirelessProfile = {
+  ssid: string;
+  security: WirelessSecurity;
+  vlan: number | null;
+  user_group: string | null;
+};
+
 export type Lab = {
   id: string;
   name: string;
