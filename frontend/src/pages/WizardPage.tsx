@@ -193,6 +193,9 @@ export function WizardPage() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labId, setLabId] = useState("");
   const [labName, setLabName] = useState("My first PEAP lab");
+  // Which of the two lab paths "Continue with lab" will take. Explicit, so
+  // editing the name can never leave the step with neither a lab nor a name.
+  const [labChoice, setLabChoice] = useState<"existing" | "new">("new");
   const [username, setUsername] = useState("labuser");
   const [password, setPassword] = useState("LabPass123!");
   const [createdUser, setCreatedUser] = useState<RadiusUser | null>(null);
@@ -223,11 +226,18 @@ export function WizardPage() {
 
   const current = steps[Math.min(stepIndex, steps.length - 1)]?.id || "medium";
 
+  const useExistingLab = labChoice === "existing" && labs.length > 0;
+  const newLabName = labName.trim();
+  const selectedLab = labs.find((lab) => lab.id === labId);
+
   useEffect(() => {
     apiFetch<Lab[]>("/labs")
       .then((data) => {
         setLabs(data);
-        if (data[0]) setLabId(data[0].id);
+        if (data[0]) {
+          setLabId(data[0].id);
+          setLabChoice("existing");
+        }
       })
       .catch((err: Error) => setError(err.message));
   }, []);
@@ -258,24 +268,37 @@ export function WizardPage() {
   }
 
   async function createOrSelectLab() {
-    setBusy(true);
     setError(null);
-    try {
-      if (labId) {
-        setStatus("Using selected lab.");
-        next();
+    if (useExistingLab) {
+      if (!labId) {
+        setError("Select a lab to continue, or choose “Create a new lab”.");
         return;
       }
+      setStatus("Using selected lab.");
+      next();
+      return;
+    }
+    if (!newLabName) {
+      setError(
+        labs.length > 0
+          ? "Enter a name for the new lab, or choose “Use an existing lab”."
+          : "Enter a name for the new lab.",
+      );
+      return;
+    }
+    setBusy(true);
+    try {
       const lab = await apiFetch<Lab>("/labs", {
         method: "POST",
         body: JSON.stringify({
-          name: labName,
+          name: newLabName,
           description: `Guided ${method.toUpperCase()} lab (${medium})`,
           settings: { medium, method },
         }),
       });
       setLabs((prev) => [...prev, lab]);
       setLabId(lab.id);
+      setLabChoice("existing");
       setStatus(`Lab “${lab.name}” created.`);
       next();
     } catch (err) {
@@ -650,7 +673,30 @@ export function WizardPage() {
               <StepTip id="lab" method={method} label="Create or select lab" />
             </h2>
             {labs.length > 0 && (
-              <Field label="Use existing lab">
+              <div className="flex flex-col gap-2">
+                {(
+                  [
+                    ["existing", "Use an existing lab"],
+                    ["new", "Create a new lab"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="lab-choice"
+                      checked={labChoice === value}
+                      onChange={() => {
+                        setLabChoice(value);
+                        setError(null);
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
+            {useExistingLab ? (
+              <Field label="Existing lab">
                 <select
                   className="ui-input"
                   value={labId}
@@ -663,17 +709,27 @@ export function WizardPage() {
                   ))}
                 </select>
               </Field>
+            ) : (
+              <Field label="New lab name">
+                <input
+                  className="ui-input"
+                  value={labName}
+                  onChange={(e) => {
+                    setLabName(e.target.value);
+                    setError(null);
+                  }}
+                />
+              </Field>
             )}
-            <Field label="Or create new lab name">
-              <input
-                className="ui-input"
-                value={labName}
-                onChange={(e) => {
-                  setLabName(e.target.value);
-                  setLabId("");
-                }}
-              />
-            </Field>
+            <p className="text-sm text-ink/60">
+              {useExistingLab
+                ? selectedLab
+                  ? `Continue uses “${selectedLab.name}” and everything already in it.`
+                  : "Select a lab to continue."
+                : newLabName
+                  ? `Continue creates a new lab named “${newLabName}”.`
+                  : "Enter a name for the new lab to continue."}
+            </p>
             <Button disabled={busy} onClick={createOrSelectLab}>
               Continue with lab
             </Button>
