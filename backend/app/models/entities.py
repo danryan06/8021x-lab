@@ -186,6 +186,8 @@ class AuthzPolicy(Base):
     # Optional user group this policy authorizes (mirrors radius_users.groups →
     # radusergroup), so PEAP/EAP-TLS logins can receive the same attributes as MAB.
     group_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Optional Login-Time / NAS-IP-Address constraints (see policy_conditions).
+    conditions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

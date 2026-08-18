@@ -207,6 +207,11 @@ export type RenderedReplyAttribute = {
   value: string;
 };
 
+export type PolicyConditions = {
+  login_time?: string | null;
+  nas_ip?: string | null;
+};
+
 export type AuthzPolicy = {
   id: string;
   lab_id: string;
@@ -215,9 +220,11 @@ export type AuthzPolicy = {
   role: string | null;
   group_name: string | null;
   reply_attributes: Record<string, string>;
+  conditions: PolicyConditions;
   enabled: boolean;
   created_at: string;
   rendered_attributes: RenderedReplyAttribute[];
+  rendered_check_items: RenderedReplyAttribute[];
   endpoint_count: number;
   summary: string;
 };

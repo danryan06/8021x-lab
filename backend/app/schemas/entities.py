@@ -167,6 +167,8 @@ class AuthzPolicyBase(BaseModel):
     group_name: str | None = Field(default=None, max_length=128)
     # Raw RADIUS reply attributes (Advanced editor): {"Session-Timeout": "3600"}.
     reply_attributes: dict[str, str] = Field(default_factory=dict)
+    # Optional Login-Time / NAS-IP-Address constraints. Empty means unrestricted.
+    conditions: dict = Field(default_factory=dict)
     enabled: bool = True
 
 
@@ -180,11 +182,13 @@ class AuthzPolicyUpdate(BaseModel):
     role: str | None = None
     group_name: str | None = None
     reply_attributes: dict[str, str] | None = None
+    conditions: dict | None = None
     enabled: bool | None = None
     # Explicit clears, since a JSON null is indistinguishable from "unchanged".
     clear_vlan: bool = False
     clear_role: bool = False
     clear_group: bool = False
+    clear_conditions: bool = False
 
 
 class RenderedReplyAttribute(BaseModel):
@@ -201,6 +205,8 @@ class AuthzPolicyRead(AuthzPolicyBase):
     created_at: datetime
     # What actually gets written to radreply/radgroupreply (computed on read).
     rendered_attributes: list[RenderedReplyAttribute] = Field(default_factory=list)
+    # Login-Time / NAS-IP-Address check items (computed on read).
+    rendered_check_items: list[RenderedReplyAttribute] = Field(default_factory=list)
     endpoint_count: int = 0
     summary: str = ""
 

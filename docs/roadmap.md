@@ -56,6 +56,10 @@
 - **Authorization** page: `AuthzPolicy` CRUD for VLAN, role (`Filter-Id`), and
   arbitrary reply attributes, with Simple (VLAN/role pickers) and Advanced (raw
   name/value editor) modes
+- **Policy conditions**: optional `Login-Time` (weekdays 08:00–17:00, weekends,
+  overnight, or a raw FreeRADIUS string) and `NAS-IP-Address` (one registered
+  client). Written as check items to `radcheck` / `radgroupcheck`, so a known
+  MAC or user is still rejected outside the window or from another switch
 - Policies apply to endpoints via `radreply` and to user groups via
   `radgroupreply`, so PEAP and EAP-TLS sessions get authorized too
 - Returned attributes are recorded on each event and shown in the Events UI
@@ -66,7 +70,6 @@
   role) toward the NAS on UDP 3799. Compose has no switch listening, so a **lab
   CoA sink** in the backend ACKs the packet for demos; a registered RADIUS client
   is the path to real hardware with dynamic authorization enabled
-- Remaining: time-of-day and NAS-scoped policy conditions
 
 ## Phase 4 — Wizard expansions (done)
 
