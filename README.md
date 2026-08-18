@@ -51,11 +51,11 @@ and the [usage guide](docs/usage.md) (step-by-step how-to).
 | Visual lab control plane | FreeRADIUS replacement |
 | Local users + PEAP/MSCHAPv2 | Active Directory / LDAP |
 | EAP-TLS with a lab CA: issue, download, revoke (CRL) | Enterprise PKI (intermediate CAs, HSM, ACME) |
-| Certificate inventory + revocation | Vendor switch/WLC generators |
+| Certificate inventory + revocation | Cloud identity providers |
 | RADIUS client sync into FreeRADIUS | Production-hardened NAC |
-| Auth events with plain-language failure explanations | Cloud identity providers |
-| MAB endpoints + VLAN/role authorization policies | Packet capture / classroom mode |
-| Guided PEAP, EAP-TLS, and MAB wizards | CoA / Disconnect-Request (planned) |
+| Auth events with plain-language failure explanations | Vendor switch/WLC generators |
+| MAB endpoints, authorization policies, CoA/Disconnect | Packet capture / classroom mode |
+| Guided PEAP, EAP-TLS, and MAB wizards | Appliance image / OVA (Phase 5) |
 
 ## Stack
 

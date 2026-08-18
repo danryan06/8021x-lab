@@ -17,10 +17,12 @@ from app.api import (
     labs,
     policies,
     radius_target,
+    session_actions,
     users,
 )
 from app.config import get_settings
 from app.db import SessionLocal
+from app.integrations.freeradius.coa_sink import start_coa_sink, stop_coa_sink
 from app.integrations.freeradius.sql_sync import (
     sync_all_endpoints,
     sync_all_users,
@@ -52,6 +54,12 @@ async def lifespan(app: FastAPI):
 
     stop_event = asyncio.Event()
     ingestion_task = asyncio.create_task(run_ingestion_task(stop_event))
+    coa_sink = None
+    if settings.coa_sink_enabled:
+        try:
+            coa_sink = await start_coa_sink()
+        except Exception:
+            logger.exception("Lab CoA sink failed to start")
     try:
         yield
     finally:
@@ -61,6 +69,7 @@ async def lifespan(app: FastAPI):
             await ingestion_task
         except asyncio.CancelledError:
             pass
+        await stop_coa_sink(coa_sink)
 
 
 app = FastAPI(
@@ -88,6 +97,7 @@ app.include_router(policies.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
 app.include_router(ca.router, prefix="/api")
 app.include_router(auth_tests.router, prefix="/api")
+app.include_router(session_actions.router, prefix="/api")
 app.include_router(freeradius.router, prefix="/api")
 app.include_router(radius_target.router, prefix="/api")
 

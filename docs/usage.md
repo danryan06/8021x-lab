@@ -100,6 +100,22 @@ Because MAB trusts a MAC address and nothing else, treat it as inventory control
 rather than authentication and give MAB devices a restricted VLAN — see
 [why MAB is weak](concepts.md#why-mab-is-weak-authentication).
 
+### Disconnect a session or push a new VLAN (CoA)
+
+Authentication is the NAS asking RADIUS. **Disconnect** and **Push policy** reverse
+that: RADIUS tells the NAS to drop the session or apply a new VLAN/role, on UDP
+3799. See [session control](concepts.md#session-control-coa-and-disconnect-request).
+
+1. Register an endpoint. Attach an authorization policy if you want Push policy
+   to carry a VLAN or role.
+2. On **Endpoints**, leave **Session control → Target** on **Lab CoA sink**
+   (Compose has no switch listening on 3799).
+3. Click **Disconnect** or **Push policy** on the row. The sink ACKs; Advanced
+   mode shows the `radclient` transcript and the attributes that were sent.
+4. To talk to a real switch, register it as a RADIUS client, enable dynamic
+   authorization on it, and select that client as the target. A timeout means
+   nothing is listening on UDP 3799 — or the shared secret does not match.
+
 ### Registering many endpoints at once
 
 **Bulk add** takes a pasted list (one MAC per line, or comma/space separated),
@@ -236,6 +252,7 @@ Clients) forces a full resync after bulk edits. What each change does:
 | Create/update/delete/generate/import user | Upsert/delete `radcheck` NT-Password |
 | Create/update/delete RADIUS client | Rewrite clients config + controlled restart |
 | Create/update/delete/generate endpoint | Upsert/delete `radcheck` (`Auth-Type := Accept`) + `radreply` for every MAC spelling |
+| Disconnect / Push policy (CoA) | `radclient` Disconnect-Request or CoA-Request to the NAS (UDP 3799) or the lab CoA sink |
 | Create/update/delete authorization policy | Rewrite `radreply` for endpoints using it and `radgroupreply` for its user group |
 | Issue certificate / create lab CA | Publish CA into trust; restart if trust changed |
 | Revoke certificate | Regenerate + publish CRL; restart if it changed |
