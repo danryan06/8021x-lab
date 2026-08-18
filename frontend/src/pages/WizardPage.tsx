@@ -9,8 +9,11 @@ import {
   type Lab,
   type RadiusClient,
   type RadiusUser,
+  type WirelessProfile,
+  type WirelessSecurity,
 } from "../api/client";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
+import { WirelessSummary } from "../components/WirelessSummary";
 import {
   Button,
   Field,
@@ -33,77 +36,119 @@ const METHOD_LABELS: Record<AuthMethod, string> = {
 type StepId =
   | "medium"
   | "method"
+  | "ssid"
   | "lab"
   | "user"
   | "ca"
   | "cert"
   | "policy"
   | "endpoint"
+  | "wlan_policy"
   | "client"
   | "test"
   | "done";
 
 type Step = { id: StepId; label: string };
 
-const PEAP_STEPS: Step[] = [
-  { id: "medium", label: "Select medium" },
-  { id: "method", label: "Select authentication type" },
-  { id: "lab", label: "Create or select lab" },
-  { id: "user", label: "Create PEAP user" },
-  { id: "client", label: "Create RADIUS client" },
-  { id: "test", label: "Run authentication test" },
-  { id: "done", label: "View events" },
-];
+// Every wizard user gets this group, so a policy bound to it authorizes the
+// identities this flow creates without any per-user rows.
+const WIZARD_USER_GROUP = "lab";
 
-const TLS_STEPS: Step[] = [
-  { id: "medium", label: "Select medium" },
-  { id: "method", label: "Select authentication type" },
-  { id: "lab", label: "Create or select lab" },
-  { id: "ca", label: "Ensure lab root CA" },
-  { id: "cert", label: "Issue client certificate" },
-  { id: "client", label: "Create RADIUS client" },
-  { id: "test", label: "Run EAP-TLS test" },
-  { id: "done", label: "View events" },
-];
+// 802.11 carries the SSID in a 32-octet element; the backend enforces the same
+// limit, but saying so while typing beats a rejected request.
+const SSID_MAX_BYTES = 32;
 
-const MAB_STEPS: Step[] = [
-  { id: "medium", label: "Select medium" },
-  { id: "method", label: "Select authentication type" },
-  { id: "lab", label: "Create or select lab" },
-  { id: "policy", label: "Create authorization policy" },
-  { id: "endpoint", label: "Register endpoint MAC" },
-  { id: "client", label: "Create RADIUS client" },
-  { id: "test", label: "Run MAB test" },
-  { id: "done", label: "View events" },
-];
+/**
+ * The steps for one run. Wireless adds an SSID up front and, for PEAP, a VLAN
+ * for the people joining it — the two things a wireless lab needs that a wired
+ * one does not.
+ */
+function buildSteps(method: AuthMethod, medium: Medium): Step[] {
+  const wireless = medium === "wireless";
+  const steps: Step[] = [
+    { id: "medium", label: "Select medium" },
+    { id: "method", label: "Select authentication type" },
+  ];
+  if (wireless) steps.push({ id: "ssid", label: "Define the SSID" });
+  steps.push({ id: "lab", label: "Create or select lab" });
+  if (method === "peap") steps.push({ id: "user", label: "Create PEAP user" });
+  if (method === "eap_tls") {
+    steps.push(
+      { id: "ca", label: "Ensure lab root CA" },
+      { id: "cert", label: "Issue client certificate" },
+    );
+  }
+  if (method === "mab") {
+    steps.push(
+      { id: "policy", label: "Create authorization policy" },
+      { id: "endpoint", label: "Register endpoint MAC" },
+    );
+  }
+  if (wireless && method === "peap") {
+    steps.push({ id: "wlan_policy", label: "Put SSID users in a VLAN" });
+  }
+  steps.push({
+    id: "client",
+    label: wireless ? "Create RADIUS client (WLC/AP)" : "Create RADIUS client",
+  });
+  steps.push({
+    id: "test",
+    label:
+      method === "eap_tls"
+        ? "Run EAP-TLS test"
+        : method === "mab"
+          ? "Run MAB test"
+          : "Run authentication test",
+  });
+  steps.push({ id: "done", label: wireless ? "Configure the SSID" : "View events" });
+  return steps;
+}
 
 type StepHelp = { what: string; configuring: string; next: string };
 
 // Per-step explanations shown in the fly-out: what the step does, what it
 // actually configures, and what to do next. Kept plain-language for newcomers.
-function stepHelp(id: StepId, method: AuthMethod): StepHelp {
+function stepHelp(id: StepId, method: AuthMethod, medium: Medium): StepHelp {
   const peap = method === "peap";
   const mab = method === "mab";
+  const wireless = medium === "wireless";
   switch (id) {
     case "medium":
       return {
         what: "Records whether this lab targets wired switches, wireless APs/controllers, or both.",
         configuring:
-          "Only lab metadata — it tags the lab and picks a sensible device-type default later (e.g. “wlc” vs “switch”). It does not change how authentication works.",
+          "Which steps you'll see and the device-type default (“wlc” vs “switch”). Wireless adds an SSID step and ends with a controller checklist; it does not change how authentication works.",
         next: "Choose the authentication type.",
+      };
+    case "ssid":
+      return {
+        what: "Records the wireless network your clients will join, so the rest of the flow can be described in SSID terms.",
+        configuring:
+          "Lab metadata only — the lab is the RADIUS server, not the access point, so nothing here starts broadcasting. It is stored on the lab and replayed as a controller checklist at the end.",
+        next: "Create or select the lab that will own this SSID's users and clients.",
+      };
+    case "wlan_policy":
+      return {
+        what: `Assigns a VLAN to everyone who joins the SSID by authorizing the “${WIZARD_USER_GROUP}” user group.`,
+        configuring:
+          "An authorization policy bound to a user group, written to radgroupreply. Because the wizard's user is in that group, its Access-Accept carries the VLAN — this is dynamic VLAN assignment, the usual reason a wireless lab exists.",
+        next: "Register the WLC/AP as a RADIUS client, or skip ahead to the test.",
       };
     case "method":
       return {
         what: "Chooses how this lab authenticates: PEAP (username/password), EAP-TLS (client certificates), or MAB (MAC address only).",
         configuring:
           "Which steps you'll see next — PEAP adds a user; EAP-TLS adds a CA plus a client certificate; MAB adds an authorization policy plus a registered MAC.",
-        next: "Create or select the lab that will own these objects.",
+        next: wireless
+          ? "Name the SSID these clients will join."
+          : "Create or select the lab that will own these objects.",
       };
     case "lab":
       return {
         what: "Creates or reuses an isolated lab environment that owns your users, clients, certificates, and events.",
-        configuring:
-          "A Lab record in the database only — nothing is sent to FreeRADIUS yet. Reusing a lab keeps everything already in it.",
+        configuring: wireless
+          ? "A Lab record, including the SSID you just named — nothing is sent to FreeRADIUS yet. Reusing a lab keeps everything already in it."
+          : "A Lab record in the database only — nothing is sent to FreeRADIUS yet. Reusing a lab keeps everything already in it.",
         next: mab
           ? "Create the authorization policy that says which VLAN and role the device gets."
           : peap
@@ -147,9 +192,12 @@ function stepHelp(id: StepId, method: AuthMethod): StepHelp {
       };
     case "client":
       return {
-        what: "Registers the network access device (switch/WLC/AP) that is allowed to send RADIUS requests.",
-        configuring:
-          "A RADIUS client entry — the NAS source IP + shared secret FreeRADIUS must recognize. Saving triggers a controlled FreeRADIUS restart to apply it. This is different from the RADIUS target above (the IP the NAS points at).",
+        what: wireless
+          ? "Registers the WLC or AP that is allowed to send RADIUS requests for this SSID."
+          : "Registers the network access device (switch/WLC/AP) that is allowed to send RADIUS requests.",
+        configuring: wireless
+          ? "A RADIUS client entry — the address the controller sources RADIUS from, plus the shared secret. On a controller that is usually its management interface, not the AP's own address. Saving triggers a controlled FreeRADIUS restart."
+          : "A RADIUS client entry — the NAS source IP + shared secret FreeRADIUS must recognize. Saving triggers a controlled FreeRADIUS restart to apply it. This is different from the RADIUS target above (the IP the NAS points at).",
         next: "Run the authentication test. For a real device, also point its RADIUS settings at the target IP/secret shown above.",
       };
     case "test":
@@ -167,13 +215,25 @@ function stepHelp(id: StepId, method: AuthMethod): StepHelp {
       return {
         what: "Your lab is live and has produced at least one authentication event.",
         configuring: "Nothing — this is a summary of what you built.",
-        next: "Explore Events, run more tests from Auth Test, or point a real NAS at the lab.",
+        next: wireless
+          ? "Copy the SSID checklist onto your AP/WLC, then join a device and watch Events."
+          : "Explore Events, run more tests from Auth Test, or point a real NAS at the lab.",
       };
   }
 }
 
-function StepTip({ id, method, label }: { id: StepId; method: AuthMethod; label: string }) {
-  const help = stepHelp(id, method);
+function StepTip({
+  id,
+  method,
+  medium,
+  label,
+}: {
+  id: StepId;
+  method: AuthMethod;
+  medium: Medium;
+  label: string;
+}) {
+  const help = stepHelp(id, method, medium);
   return (
     <InfoTip label={`What the “${label}” step does`}>
       <span className="block font-semibold text-ink">What this step does</span>
@@ -196,6 +256,10 @@ export function WizardPage() {
   // Which of the two lab paths "Continue with lab" will take. Explicit, so
   // editing the name can never leave the step with neither a lab nor a name.
   const [labChoice, setLabChoice] = useState<"existing" | "new">("new");
+  const [ssid, setSsid] = useState("Lab-Corp");
+  const [security, setSecurity] = useState<WirelessSecurity>("wpa2_enterprise");
+  const [wlanPolicyName, setWlanPolicyName] = useState("SSID users → VLAN 20");
+  const [wlanVlan, setWlanVlan] = useState("20");
   const [username, setUsername] = useState("labuser");
   const [password, setPassword] = useState("LabPass123!");
   const [createdUser, setCreatedUser] = useState<RadiusUser | null>(null);
@@ -218,17 +282,16 @@ export function WizardPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  const steps = useMemo(() => {
-    if (method === "eap_tls") return TLS_STEPS;
-    if (method === "mab") return MAB_STEPS;
-    return PEAP_STEPS;
-  }, [method]);
+  const steps = useMemo(() => buildSteps(method, medium), [method, medium]);
 
   const current = steps[Math.min(stepIndex, steps.length - 1)]?.id || "medium";
 
   const useExistingLab = labChoice === "existing" && labs.length > 0;
   const newLabName = labName.trim();
   const selectedLab = labs.find((lab) => lab.id === labId);
+  const wireless = medium === "wireless";
+  const trimmedSsid = ssid.trim();
+  const ssidBytes = new TextEncoder().encode(trimmedSsid).length;
 
   useEffect(() => {
     apiFetch<Lab[]>("/labs")
@@ -255,6 +318,26 @@ export function WizardPage() {
     );
   }, [method, steps.length]);
 
+  useEffect(() => {
+    // A wireless lab registers a controller, not a switch — say so by default,
+    // and give it its own address, since one address can hold one client.
+    const wirelessMedium = medium === "wireless";
+    setClientName((current) =>
+      current === "lab-switch" || current === "lab-wlc"
+        ? wirelessMedium
+          ? "lab-wlc"
+          : "lab-switch"
+        : current,
+    );
+    setClientIp((current) =>
+      current === "10.0.0.1" || current === "10.0.0.2"
+        ? wirelessMedium
+          ? "10.0.0.2"
+          : "10.0.0.1"
+        : current,
+    );
+  }, [medium]);
+
   function next() {
     setError(null);
     setStatus(null);
@@ -267,12 +350,53 @@ export function WizardPage() {
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
+  function wirelessProfile(vlan: number | null, userGroup: string | null): WirelessProfile {
+    return { ssid: trimmedSsid, security, vlan, user_group: userGroup };
+  }
+
+  /** Record the SSID (and whatever VLAN it hands out) on the lab itself. */
+  async function saveWirelessProfile(labIdToUse: string, vlan: number | null, group: string | null) {
+    const lab = await apiFetch<Lab>(`/labs/${labIdToUse}/wireless-profile`, {
+      method: "PUT",
+      body: JSON.stringify(wirelessProfile(vlan, group)),
+    });
+    setLabs((prev) => prev.map((item) => (item.id === lab.id ? lab : item)));
+    return lab;
+  }
+
+  function continueSsid() {
+    setError(null);
+    if (!trimmedSsid) {
+      setError("Enter the SSID clients will join.");
+      return;
+    }
+    if (ssidBytes > SSID_MAX_BYTES) {
+      setError(
+        `That SSID is ${ssidBytes} bytes — 802.11 allows at most ${SSID_MAX_BYTES}. Shorten it.`,
+      );
+      return;
+    }
+    next();
+  }
+
   async function createOrSelectLab() {
     setError(null);
     if (useExistingLab) {
       if (!labId) {
         setError("Select a lab to continue, or choose “Create a new lab”.");
         return;
+      }
+      if (wireless) {
+        // Reusing a lab still needs to learn which SSID this run is about.
+        setBusy(true);
+        try {
+          await saveWirelessProfile(labId, null, null);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not record the SSID");
+          return;
+        } finally {
+          setBusy(false);
+        }
       }
       setStatus("Using selected lab.");
       next();
@@ -293,7 +417,11 @@ export function WizardPage() {
         body: JSON.stringify({
           name: newLabName,
           description: `Guided ${method.toUpperCase()} lab (${medium})`,
-          settings: { medium, method },
+          settings: {
+            medium,
+            method,
+            ...(wireless ? { wireless_profile: wirelessProfile(null, null) } : {}),
+          },
         }),
       });
       setLabs((prev) => [...prev, lab]);
@@ -319,7 +447,7 @@ export function WizardPage() {
           lab_id: labId,
           username,
           password,
-          groups: ["lab"],
+          groups: [WIZARD_USER_GROUP],
         }),
       });
       setCreatedUser(user);
@@ -330,9 +458,15 @@ export function WizardPage() {
         const users = await apiFetch<RadiusUser[]>(`/users?lab_id=${labId}`);
         const existing = users.find((u) => u.username === username);
         if (existing) {
+          // Re-assert the group too: a policy bound to it is how this user gets
+          // a VLAN, and a user made by hand may not be in it.
           await apiFetch(`/users/${existing.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ password, status: "active" }),
+            body: JSON.stringify({
+              password,
+              status: "active",
+              groups: [WIZARD_USER_GROUP],
+            }),
           });
           setCreatedUser(existing);
           setStatus(`Updated existing user ${username} and synced to FreeRADIUS.`);
@@ -409,6 +543,7 @@ export function WizardPage() {
         }),
       });
       setCreatedPolicy(policy);
+      if (wireless) await saveWirelessProfile(labId, policy.vlan, null);
       setStatus(`Policy “${policy.name}” created — returns ${policy.summary}.`);
       next();
     } catch {
@@ -418,6 +553,7 @@ export function WizardPage() {
         const existing = policies.find((p) => p.name === policyName);
         if (existing) {
           setCreatedPolicy(existing);
+          if (wireless) await saveWirelessProfile(labId, existing.vlan, null);
           setStatus(`Using existing policy “${existing.name}” — returns ${existing.summary}.`);
           next();
           return;
@@ -426,6 +562,63 @@ export function WizardPage() {
         /* fall through */
       }
       setError("Authorization policy create failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createWlanPolicy() {
+    if (!labId) return;
+    setError(null);
+    const name = wlanPolicyName.trim();
+    const vlan = Number(wlanVlan);
+    if (!name) {
+      setError("Name the policy so you can find it again on the Authorization page.");
+      return;
+    }
+    if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) {
+      setError("Enter a VLAN id between 1 and 4094 — the range 802.1Q allows.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const policy = await apiFetch<AuthzPolicy>("/authz-policies", {
+        method: "POST",
+        body: JSON.stringify({
+          lab_id: labId,
+          name,
+          vlan,
+          group_name: WIZARD_USER_GROUP,
+        }),
+      });
+      setCreatedPolicy(policy);
+      await saveWirelessProfile(labId, vlan, WIZARD_USER_GROUP);
+      setStatus(`Policy “${policy.name}” created — returns ${policy.summary}.`);
+      next();
+    } catch {
+      // Only one policy may claim a group, so a repeat run re-points the policy
+      // that already owns it rather than failing on the second attempt.
+      try {
+        const policies = await apiFetch<AuthzPolicy[]>(`/authz-policies?lab_id=${labId}`);
+        const existing = policies.find((p) => p.group_name === WIZARD_USER_GROUP);
+        if (existing) {
+          const updated = await apiFetch<AuthzPolicy>(`/authz-policies/${existing.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ vlan, enabled: true }),
+          });
+          setCreatedPolicy(updated);
+          await saveWirelessProfile(labId, vlan, WIZARD_USER_GROUP);
+          setStatus(
+            `Reused policy “${updated.name}” for the ${WIZARD_USER_GROUP} group — returns ` +
+              `${updated.summary}.`,
+          );
+          next();
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+      setError("Could not create the VLAN policy for this SSID");
     } finally {
       setBusy(false);
     }
@@ -496,23 +689,40 @@ export function WizardPage() {
       setCreatedClient(client);
       setStatus("RADIUS client synced — FreeRADIUS reload requested.");
       next();
-    } catch {
+    } catch (err) {
       try {
-        const clients = await apiFetch<RadiusClient[]>(`/clients?lab_id=${labId}`);
-        const existing = clients.find((c) => c.name === clientName);
+        // One address can only hold one client, and FreeRADIUS serves every lab
+        // from that one entry — so continue with whichever client already
+        // answers for this NAS, wherever it lives.
+        const clients = await apiFetch<RadiusClient[]>("/clients");
+        const wanted = clientIp.trim().toLowerCase();
+        const existing =
+          clients.find((c) => c.ip_address.trim().toLowerCase() === wanted) ||
+          clients.find((c) => c.lab_id === labId && c.name === clientName);
         if (existing) {
           setCreatedClient(existing);
-          setStatus("Using existing RADIUS client.");
+          const owner = labs.find((lab) => lab.id === existing.lab_id);
+          const elsewhere =
+            existing.lab_id !== labId && owner ? ` — registered in lab “${owner.name}”` : "";
+          setStatus(
+            `Using existing RADIUS client “${existing.name}” (${existing.ip_address})${elsewhere}.`,
+          );
           next();
           return;
         }
       } catch {
         /* fall through */
       }
-      setError("Client create failed");
+      setError(err instanceof Error ? err.message : "Client create failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  function skipClient() {
+    setError(null);
+    setStatus(null);
+    next();
   }
 
   async function runTest() {
@@ -560,12 +770,14 @@ export function WizardPage() {
 
   const showGenericNav = current === "medium" || current === "method";
   const showBackOnly =
+    current === "ssid" ||
     current === "lab" ||
     current === "user" ||
     current === "ca" ||
     current === "cert" ||
     current === "policy" ||
     current === "endpoint" ||
+    current === "wlan_policy" ||
     current === "client" ||
     current === "test";
 
@@ -574,11 +786,14 @@ export function WizardPage() {
       <PageHeader
         title="Create your first 802.1X lab"
         subtitle={
-          method === "eap_tls"
-            ? "Guided EAP-TLS path — lab CA, client cert, RADIUS client, live test, then Events."
-            : method === "mab"
-              ? "Guided MAB path — authorization policy, endpoint MAC, RADIUS client, live test, then Events."
-              : "Guided PEAP path — lab, user, RADIUS client, live auth test, then Events."
+          wireless
+            ? `Guided wireless path — ${METHOD_LABELS[method]} on a WPA2/3-Enterprise SSID, ` +
+              "ending with the settings to enter on your AP/WLC."
+            : method === "eap_tls"
+              ? "Guided EAP-TLS path — lab CA, client cert, RADIUS client, live test, then Events."
+              : method === "mab"
+                ? "Guided MAB path — authorization policy, endpoint MAC, RADIUS client, live test, then Events."
+                : "Guided PEAP path — lab, user, RADIUS client, live auth test, then Events."
         }
       />
 
@@ -600,7 +815,7 @@ export function WizardPage() {
               <span className="font-mono text-signal">{index + 1}</span>
               <span className={`flex items-center gap-1.5 ${active ? "font-medium" : ""}`}>
                 {step.label}
-                <StepTip id={step.id} method={method} label={step.label} />
+                <StepTip id={step.id} method={method} medium={medium} label={step.label} />
               </span>
             </li>
           );
@@ -615,7 +830,7 @@ export function WizardPage() {
           <div>
             <h2 className="flex items-center gap-2 font-semibold">
               1. Medium
-              <StepTip id="medium" method={method} label="Select medium" />
+              <StepTip id="medium" method={method} medium={medium} label="Select medium" />
             </h2>
             <div className="mt-3 flex flex-col gap-2">
               {(["wired", "wireless", "both"] as const).map((value) => (
@@ -630,6 +845,10 @@ export function WizardPage() {
                 </label>
               ))}
             </div>
+            <p className="mt-3 text-sm text-ink/60">
+              Wireless adds an SSID step and ends with the settings to enter on your AP/WLC. The
+              lab is the RADIUS server for that SSID — it does not broadcast anything itself.
+            </p>
           </div>
         )}
 
@@ -637,7 +856,7 @@ export function WizardPage() {
           <div>
             <h2 className="flex items-center gap-2 font-semibold">
               2. Authentication type
-              <StepTip id="method" method={method} label="Select authentication type" />
+              <StepTip id="method" method={method} medium={medium} label="Select authentication type" />
             </h2>
             <div className="mt-3 flex flex-col gap-2">
               {(
@@ -666,11 +885,69 @@ export function WizardPage() {
           </div>
         )}
 
+        {current === "ssid" && (
+          <div className="space-y-4">
+            <h2 className="flex items-center gap-2 font-semibold">
+              SSID
+              <StepTip id="ssid" method={method} medium={medium} label="Define the SSID" />
+            </h2>
+            <p className="text-sm text-ink/70">
+              The network name your clients will join. The lab does not broadcast it — your AP or
+              controller does, and points at this lab for authentication. Naming it here lets the
+              rest of the flow talk in SSID terms and produces a checklist at the end.
+            </p>
+            <Field label="SSID (network name)">
+              <input
+                className="ui-input"
+                value={ssid}
+                onChange={(e) => {
+                  setSsid(e.target.value);
+                  setError(null);
+                }}
+                placeholder="Lab-Corp"
+              />
+            </Field>
+            <p className={`text-xs ${ssidBytes > SSID_MAX_BYTES ? "text-fail" : "text-ink/55"}`}>
+              {ssidBytes} of {SSID_MAX_BYTES} bytes — 802.11 carries the SSID in a 32-octet field,
+              and accented or emoji characters cost more than one byte each.
+            </p>
+            <div className="space-y-2">
+              <span className="text-sm text-ink/80">Security</span>
+              {(
+                [
+                  ["wpa2_enterprise", "WPA2-Enterprise — works with essentially every client"],
+                  [
+                    "wpa3_enterprise",
+                    "WPA3-Enterprise — requires protected management frames and newer clients",
+                  ],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="wlan-security"
+                    checked={security === value}
+                    onChange={() => setSecurity(value)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p className="text-sm text-ink/60">
+              Both carry 802.1X/EAP the same way, so {METHOD_LABELS[method]} works with either —
+              the difference is on the air, not in RADIUS.
+            </p>
+            <Button disabled={busy} onClick={continueSsid}>
+              Continue with SSID
+            </Button>
+          </div>
+        )}
+
         {current === "lab" && (
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 font-semibold">
               Lab
-              <StepTip id="lab" method={method} label="Create or select lab" />
+              <StepTip id="lab" method={method} medium={medium} label="Create or select lab" />
             </h2>
             {labs.length > 0 && (
               <div className="flex flex-col gap-2">
@@ -740,7 +1017,7 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
               Create PEAP user
-              <StepTip id="user" method={method} label="Create PEAP user" />
+              <StepTip id="user" method={method} medium={medium} label="Create PEAP user" />
             </h2>
             <Field label="Username">
               <input
@@ -767,7 +1044,7 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
               Ensure lab root CA
-              <StepTip id="ca" method={method} label="Ensure lab root CA" />
+              <StepTip id="ca" method={method} medium={medium} label="Ensure lab root CA" />
             </h2>
             <p className="text-sm text-ink/70">
               Creates an openssl lab root CA and publishes it into FreeRADIUS client trust
@@ -799,7 +1076,7 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
               Issue client certificate
-              <StepTip id="cert" method={method} label="Issue client certificate" />
+              <StepTip id="cert" method={method} medium={medium} label="Issue client certificate" />
             </h2>
             <p className="text-sm text-ink/70">
               Issues a client cert under the lab CA. Download the PEM/P12 bundle for real
@@ -837,7 +1114,7 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
               Create authorization policy
-              <StepTip id="policy" method={method} label="Create authorization policy" />
+              <StepTip id="policy" method={method} medium={medium} label="Create authorization policy" />
             </h2>
             <p className="text-sm text-ink/70">
               Authentication answers “is this device allowed?”. Authorization answers “and what
@@ -886,7 +1163,7 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
               Register endpoint MAC
-              <StepTip id="endpoint" method={method} label="Register endpoint MAC" />
+              <StepTip id="endpoint" method={method} medium={medium} label="Register endpoint MAC" />
             </h2>
             <p className="text-sm text-ink/70">
               MAB authenticates a device by its MAC address alone — no certificate, no password.
@@ -927,15 +1204,75 @@ export function WizardPage() {
           </div>
         )}
 
+        {current === "wlan_policy" && (
+          <div className="space-y-3">
+            <h2 className="flex items-center gap-2 font-semibold">
+              Put SSID users in a VLAN
+              <StepTip
+                id="wlan_policy"
+                method={method}
+                medium={medium}
+                label="Put SSID users in a VLAN"
+              />
+            </h2>
+            <p className="text-sm text-ink/70">
+              One SSID can serve several VLANs: the controller puts each client wherever the
+              Access-Accept says. This policy authorizes the{" "}
+              <code>{WIZARD_USER_GROUP}</code> user group — the group the user you just created
+              belongs to — so anyone in it lands in the same VLAN, without a rule per person.
+            </p>
+            <Field label="Policy name">
+              <input
+                className="ui-input"
+                value={wlanPolicyName}
+                onChange={(e) => {
+                  setWlanPolicyName(e.target.value);
+                  setError(null);
+                }}
+              />
+            </Field>
+            <Field label="VLAN for people on this SSID">
+              <input
+                className="ui-input"
+                inputMode="numeric"
+                value={wlanVlan}
+                onChange={(e) => {
+                  setWlanVlan(e.target.value);
+                  setError(null);
+                }}
+                placeholder="20"
+              />
+            </Field>
+            {createdPolicy && (
+              <p className="flex flex-wrap items-center gap-2 text-xs text-ink/60">
+                Returns:{" "}
+                <ReplyAttributes
+                  attributes={Object.fromEntries(
+                    createdPolicy.rendered_attributes.map((a) => [a.name, a.value]),
+                  )}
+                />
+              </p>
+            )}
+            <Button disabled={busy} variant="signal" onClick={createWlanPolicy}>
+              {busy ? "Working…" : "Create VLAN policy"}
+            </Button>
+            <p className="text-sm text-ink/55">
+              The VLAN must already exist on the AP/WLC and its uplink switch — RADIUS only names
+              it.
+            </p>
+          </div>
+        )}
+
         {current === "client" && (
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
-              RADIUS client (for real NAS)
-              <StepTip id="client" method={method} label="Create RADIUS client" />
+              {wireless ? "RADIUS client (your AP or WLC)" : "RADIUS client (for real NAS)"}
+              <StepTip id="client" method={method} medium={medium} label="Create RADIUS client" />
             </h2>
             <p className="text-sm text-ink/60">
-              First confirm the lab RADIUS target IP (what the NAS points to). Then add this
-              client as the NAS source IP FreeRADIUS will accept.
+              {wireless
+                ? "First confirm the lab RADIUS target IP (what the controller points to). Then add the address the controller sends RADIUS from — on most WLCs that is the management interface, not each AP."
+                : "First confirm the lab RADIUS target IP (what the NAS points to). Then add this client as the NAS source IP FreeRADIUS will accept."}
             </p>
             {labId && <RadiusTargetPanel labId={labId} compact />}
             <Field label="Name">
@@ -945,7 +1282,7 @@ export function WizardPage() {
                 onChange={(e) => setClientName(e.target.value)}
               />
             </Field>
-            <Field label="IP / CIDR">
+            <Field label={wireless ? "AP / WLC source IP or CIDR" : "IP / CIDR"}>
               <input
                 className="ui-input"
                 value={clientIp}
@@ -959,9 +1296,18 @@ export function WizardPage() {
                 onChange={(e) => setClientSecret(e.target.value)}
               />
             </Field>
-            <Button disabled={busy} onClick={createClient}>
-              Create client & sync
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={busy} onClick={createClient}>
+                Create client & sync
+              </Button>
+              <Button variant="ghost" disabled={busy} onClick={skipClient}>
+                Skip for now
+              </Button>
+            </div>
+            <p className="text-sm text-ink/55">
+              The test on the next step runs inside Compose and does not need this client — it is
+              for the real {wireless ? "AP/WLC" : "switch"} when you have one.
+            </p>
           </div>
         )}
 
@@ -969,7 +1315,7 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
               Run {METHOD_LABELS[method]} test
-              <StepTip id="test" method={method} label="Run authentication test" />
+              <StepTip id="test" method={method} medium={medium} label="Run authentication test" />
             </h2>
             <p className="text-sm text-ink/70">
               {method === "eap_tls" ? (
@@ -1019,10 +1365,11 @@ export function WizardPage() {
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
               Done
-              <StepTip id="done" method={method} label="View events" />
+              <StepTip id="done" method={method} medium={medium} label="View events" />
             </h2>
             <p className="text-sm text-ink/70">
               Your {METHOD_LABELS[method]} lab is live
+              {wireless ? ` on SSID ${trimmedSsid}` : ""}
               {createdClient ? ` (NAS client: ${createdClient.name})` : ""}.
               {method === "eap_tls" && certIdentity ? ` Client identity: ${certIdentity}.` : ""}
               {method === "mab" && createdEndpoint
@@ -1033,6 +1380,25 @@ export function WizardPage() {
                   }.`
                 : ""}
             </p>
+            {wireless && labId && (
+              <WirelessSummary
+                labId={labId}
+                ssid={trimmedSsid}
+                security={security}
+                methodLabel={METHOD_LABELS[method]}
+                credential={
+                  method === "eap_tls"
+                    ? `the client certificate for ${certIdentity}`
+                    : method === "mab"
+                      ? `the registered MAC ${createdEndpoint?.mac_address || endpointMac}`
+                      : `username ${createdUser?.username || username} and its password`
+                }
+                vlan={createdPolicy?.vlan ?? null}
+                clientName={createdClient?.name || null}
+                clientIp={createdClient?.ip_address || null}
+              />
+            )}
+            {!wireless && (
             <div className="border border-ink/10 bg-mist/40 p-4 text-sm">
               <p className="font-medium">Take it to real hardware</p>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink/75">
@@ -1068,6 +1434,17 @@ export function WizardPage() {
                 Full guide: deploying to real devices →
               </a>
             </div>
+            )}
+            {wireless && method === "eap_tls" && (
+              <p className="text-sm text-ink/60">
+                To hand certificate users a VLAN as well, create an authorization policy bound to a{" "}
+                <Link className="underline" to="/policies">
+                  user group
+                </Link>{" "}
+                and make sure the certificate's identity is a lab user in that group — EAP-TLS
+                reads group membership the same way PEAP does.
+              </p>
+            )}
             <div className="flex flex-wrap gap-3">
               <Link className="ui-btn-signal" to="/events">
                 Open Events

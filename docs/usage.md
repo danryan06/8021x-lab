@@ -107,6 +107,37 @@ normalizes each entry, skips duplicates, and reports any lines it could not pars
 without discarding the good ones. **Generate** creates random MACs under a vendor
 prefix with mixed device types, which is the quickest way to populate a demo.
 
+## Guide: a wireless (WPA2/3-Enterprise) lab
+
+The **Wizard** has a wireless path: pick **wireless** at the medium step and the
+flow changes shape. Use it when the thing you're building is an SSID rather than
+a switch port.
+
+1. **Name the SSID.** Enter the network name your clients will join and pick
+   **WPA2-Enterprise** or **WPA3-Enterprise**. The lab is the RADIUS server for
+   that SSID — it does not broadcast anything itself, so this is recorded on the
+   lab and replayed as a checklist at the end. The field counts bytes as you
+   type, because 802.11 caps an SSID at 32 octets.
+2. **Create or select the lab**, then create the identity: a PEAP user, or a CA
+   plus a client certificate for EAP-TLS, or a policy plus a registered MAC for
+   MAB — the same steps as the wired paths.
+3. **Put SSID users in a VLAN** (PEAP). This creates an authorization policy
+   bound to the `lab` user group that the wizard's user belongs to, so the
+   Access-Accept carries `VLAN <id>` — dynamic VLAN assignment from a single
+   SSID. The VLAN must already exist on the controller and its uplink.
+4. **Register the AP/WLC** as a RADIUS client, using the address the *controller*
+   sources RADIUS from (usually its management interface, not each AP). You can
+   **Skip for now** — the built-in test runs inside Compose and doesn't need it.
+5. **Run the test**, then read the finished page: SSID, security mode, EAP
+   method, RADIUS server IP and ports, the shared secret (masked, click
+   **Reveal**), the VLAN that comes back, and the client you registered — every
+   value the controller asks for, in one place.
+
+For EAP-TLS the wizard does not create a VLAN step, because certificate
+identities pick up attributes through user-group membership: create the policy on
+the **Authorization** page and make sure a lab user with that certificate's
+identity is in the group.
+
 ## Guide: authorization policies (VLAN and role)
 
 Authentication decides *whether* a device gets on; authorization decides *what it
@@ -168,6 +199,10 @@ To authenticate a real NAS (switch/WLC/AP) instead of the built-in test path:
    come from) and the **same shared secret**. This is the step that authorizes
    the device — see [why in concepts](concepts.md#why-you-add-devices-as-radius-clients).
    Saving triggers a controlled FreeRADIUS restart so the new client is applied.
+   **One address, one client:** FreeRADIUS identifies a NAS by its source
+   address, so a second client for an address already registered (in any lab) is
+   refused with a message naming the one that holds it — edit or reuse that
+   client, or disable it first.
 4. **Authenticate a real device** through that NAS and watch **Auth Events**.
 
 > **Docker Desktop caveat (macOS/Windows):** published UDP ports rewrite the

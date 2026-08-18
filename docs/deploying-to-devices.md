@@ -108,7 +108,13 @@ switch's **source IP** (the interface it sources RADIUS from) and the same
 ## Part C — Configure a wireless SSID for WPA2/3-Enterprise
 
 The access point or wireless LAN controller is the authenticator. The exact menus
-differ by vendor, but every controller needs the same inputs:
+differ by vendor, but every controller needs the same inputs.
+
+> **Shortcut:** the **Wizard → wireless** path ends on a page listing these
+> values for the lab you just built — SSID, security mode, RADIUS server IP and
+> ports, shared secret, and the VLAN that comes back. See
+> [usage.md](usage.md#guide-a-wireless-wpa23-enterprise-lab).
+
 
 1. **Create/define a RADIUS server** pointing at the **RADIUS target IP**, auth
    port `1812` (accounting `1813`), with the **lab shared secret**.
