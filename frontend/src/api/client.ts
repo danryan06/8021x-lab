@@ -177,6 +177,7 @@ export type RadiusClient = {
 
 export type AuthEvent = {
   id: string;
+  lab_id: string | null;
   timestamp: string;
   identity: string | null;
   method: string;
@@ -186,6 +187,7 @@ export type AuthEvent = {
   failure_hint: string | null;
   returned_attributes: Record<string, string>;
   nas_ip: string | null;
+  raw_ref: string | null;
 };
 
 export type Endpoint = {

@@ -34,7 +34,10 @@ what it configures, and what comes next), or do it by hand:
 
 1. **Create a user.** Go to **Users → Add user**, set a username and password
    (optionally first/last/department). Saving syncs the user's NT-Password into
-   FreeRADIUS automatically.
+   FreeRADIUS automatically. You can later **Edit** that row to reset the
+   password, change groups, or disable the user (which removes their NT-Password
+   from FreeRADIUS so the next PEAP attempt rejects). Username is the RADIUS
+   `User-Name` and cannot be renamed — delete and recreate to change it.
 2. **Run the test.** Go to **Auth Test**, choose your lab, method **PEAP**,
    select the user, enter the password, and **Run test**.
 3. **See the result.** You'll get an Accept/Reject inline, and a new row appears
@@ -244,15 +247,20 @@ To authenticate a real NAS (switch/WLC/AP) instead of the built-in test path:
 
 ## Guide: reading and troubleshooting auth events
 
-**Auth Events** auto-refreshes and colors Accept vs. Reject. For a rejected
-event it shows a plain-language **summary** and a **hint**, with the raw
-FreeRADIUS reason underneath (Advanced-friendly). Common ones:
+**Auth Events** auto-refreshes and colors Accept vs. Reject. Click a row
+(or **Details**) to expand it. Simple mode shows the VLAN/role (or why it
+failed, plus a fix hint), the NAS IP, and a link to the matching user or
+endpoint. Advanced mode adds every reply attribute under its RADIUS name, the
+raw FreeRADIUS reason, event/lab IDs, and the original `DOT1X|…` linelog line.
+
+Collapsed rows keep a one-line **Summary** so you can scan Accept/Reject without
+opening every event. Common reject summaries:
 
 | You see | Likely cause | Fix |
 |---------|-------------|-----|
 | Untrusted CA | Client cert not issued by a trusted lab CA | Sync/publish the lab CA (Certificates page) |
 | Certificate expired / revoked | Cert past validity or on the CRL | Re-issue the certificate |
-| PEAP/MSCHAPv2 password rejected | Wrong password or not synced | Confirm the password; Sync to FreeRADIUS |
+| PEAP/MSCHAPv2 password rejected | Wrong password, disabled user, or not synced | Users → Edit to reset the password, or Enable; Sync to FreeRADIUS |
 | No matching user | Identity missing in FreeRADIUS | Create the user and Sync to FreeRADIUS |
 | Unknown MAC address | No endpoint registered for that MAC | Add it on **Endpoints** |
 | Endpoint is disabled | Registered but not synced to FreeRADIUS | Re-enable it on **Endpoints** |

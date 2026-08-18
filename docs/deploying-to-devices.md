@@ -148,7 +148,7 @@ explanation.
 |---------|-------------|---------------|
 | Nothing appears in Auth Events | Switch/AP not registered, or wrong RADIUS target IP | RADIUS Clients (source IP + secret); Dashboard RADIUS target |
 | "Untrusted CA" reject | Client cert not from the lab CA, or CA not published | Certificates page → issue from lab CA / Sync |
-| PEAP password rejected | Wrong password or user not synced | Users page → confirm/reset, Sync to FreeRADIUS |
+| PEAP password rejected | Wrong password or user not synced | Users page → Edit (reset password) or Enable; Sync to FreeRADIUS |
 | Client won't trust the server | Device doesn't trust the lab CA | Install the root CA (Part A step 2) |
 
 See [usage.md](usage.md#guide-reading-and-troubleshooting-auth-events) for reading

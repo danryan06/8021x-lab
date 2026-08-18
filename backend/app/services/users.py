@@ -137,11 +137,11 @@ def update_user(db: Session, user: RadiusUser, payload: RadiusUserUpdate) -> Rad
         user.password_hash = hash_password(payload.password)
         user.nt_hash = nt_hash_password(payload.password)
     if payload.first_name is not None:
-        user.first_name = payload.first_name
+        user.first_name = payload.first_name or None
     if payload.last_name is not None:
-        user.last_name = payload.last_name
+        user.last_name = payload.last_name or None
     if payload.department is not None:
-        user.department = payload.department
+        user.department = payload.department or None
     if payload.groups is not None:
         user.groups = payload.groups
     if payload.status is not None:
