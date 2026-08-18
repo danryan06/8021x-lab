@@ -80,6 +80,7 @@ class CertificateInventory(BaseModel):
     authority: AuthorityRead | None
     crl_available: bool
     crl_enforced: bool
+    has_intermediate: bool = False
     certificates: list[CertificateRead]
 
 
@@ -112,6 +113,70 @@ def ensure_root(
         "not_after": info.not_after,
         "freeradius_trust": freeradius_trust,
         "download_pem": f"/api/ca/root.pem?lab_id={payload.lab_id}",
+    }
+
+
+class EnsureIntermediateRequest(BaseModel):
+    lab_id: UUID
+    common_name: str = Field(default="802.1X Lab Intermediate CA")
+
+
+@router.post("/ensure-intermediate")
+def ensure_intermediate(
+    payload: EnsureIntermediateRequest,
+    db: Session = Depends(get_db),
+    _admin=Depends(get_current_admin),
+) -> dict:
+    adapter = get_ca_adapter()
+    ensure = getattr(adapter, "ensure_intermediate", None)
+    if ensure is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Active CA adapter does not support intermediate CAs",
+        )
+    try:
+        root = adapter.ensure_root(payload.lab_id)
+        info = ensure(payload.lab_id, payload.common_name)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Intermediate CA failed: {exc}") from exc
+
+    ca_row = _upsert_ca_row(db, payload.lab_id, root.name, root.subject, root.storage_ref)
+    existing = db.scalar(
+        select(Certificate).where(
+            Certificate.lab_id == payload.lab_id,
+            Certificate.cert_type == CertType.intermediate_ca,
+            Certificate.storage_ref == info.storage_ref,
+        )
+    )
+    if existing is None:
+        row = Certificate(
+            lab_id=payload.lab_id,
+            authority_id=ca_row.id,
+            subject=info.subject,
+            issuer=root.subject,
+            serial=None,
+            cert_type=CertType.intermediate_ca,
+            status=CertStatus.active,
+            not_before=info.not_before,
+            not_after=info.not_after,
+            storage_ref=info.storage_ref,
+        )
+        db.add(row)
+        db.commit()
+    try:
+        publish_lab_ca(payload.lab_id)
+        freeradius_trust = "published"
+    except Exception as exc:
+        freeradius_trust = f"publish_failed: {exc}"
+    return {
+        "name": info.name,
+        "subject": info.subject,
+        "storage_ref": info.storage_ref,
+        "not_before": info.not_before,
+        "not_after": info.not_after,
+        "freeradius_trust": freeradius_trust,
     }
 
 
@@ -199,13 +264,16 @@ def list_certificates(
     )
     adapter = get_ca_adapter()
     crl_available = False
+    has_intermediate = False
     if isinstance(adapter, OpenSslLocalCaAdapter):
         crl_available = adapter.crl_path(lab_id).exists()
+        has_intermediate = adapter._has_intermediate(lab_id)
 
     return CertificateInventory(
         authority=authority,
         crl_available=crl_available,
         crl_enforced=get_settings().freeradius_enforce_crl,
+        has_intermediate=has_intermediate,
         certificates=[_to_certificate_read(row) for row in rows],
     )
 
@@ -319,13 +387,19 @@ def download_client_bundle(
         zf.writestr(f"{identity}.crt", cert.read_text(encoding="utf-8"))
         zf.writestr(f"{identity}.key", key.read_text(encoding="utf-8"))
         zf.writestr("lab-root.pem", root.read_text(encoding="utf-8"))
+        if adapter._has_intermediate(lab_id):
+            zf.writestr(
+                "lab-intermediate.pem",
+                adapter.intermediate_cert_path(lab_id).read_text(encoding="utf-8"),
+            )
         if p12.exists():
             zf.writestr(f"{identity}.p12", p12.read_bytes())
         readme = (
             "802.1X Lab EAP-TLS bundle\n"
             f"identity={identity}\n"
             "Import the .p12 (empty passphrase) on the client, or use .crt/.key with eapol_test.\n"
-            "Trust lab-root.pem as the RADIUS client CA; trust the FreeRADIUS server CA separately "
+            "Trust lab-root.pem as the RADIUS client CA"
+            " (and lab-intermediate.pem if present); trust the FreeRADIUS server CA separately "
             "for server authentication in lab tests.\n"
         )
         zf.writestr("README.txt", readme)

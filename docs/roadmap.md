@@ -36,10 +36,13 @@
   CRL enforcement is opt-in via `FREERADIUS_ENFORCE_CRL`
 - TLS/PEAP failure explanations (unknown CA, expired, revoked, bad password) (done)
 - Automatic expiry sweep: active certificates whose `not_after` has passed are
-  marked `expired` on inventory list and at API startup (done). Display already
-  treated them as expired; the sweep persists that so counts and later checks
-  match the UI
-- Remaining: step-ca adapter beyond stub, intermediate CAs
+  marked `expired` on inventory list and at API startup (done)
+- **Intermediate CA** (openssl): optional teaching chain — root signs an
+  intermediate, the intermediate signs client certs, PKCS#12 and FreeRADIUS trust
+  carry both (done)
+- **step-ca adapter**: `CA_ADAPTER=step-ca` + `STEP_CA_URL` / `STEP_CA_TOKEN`
+  issues via `POST /1.0/sign` against a running Smallstep CA (done; openssl stays
+  the Compose default)
 
 > **Note:** Basic lab CA already shipped in Phase 1.5 (Wizard + Auth Test: ensure root, issue client cert, PEM/P12 download, FreeRADIUS trust). Phase 2 adds the inventory, real revocation/CRL, and failure explanations.
 
@@ -89,8 +92,10 @@
   one address (which made FreeRADIUS refuse to start), the clients file covers
   every lab instead of only the one being synced, and a duplicate lab name is
   explained instead of returning a 500
-- Remaining: guest/captive-portal flows, per-SSID RADIUS clients on the
-  Dashboard, and a wired-and-wireless ("both") variant of the checklist
+- Remaining: none for the guided paths. Guest/captive-portal analogue lives on
+  the **Guest** page (short-lived PEAP users in the `guests` group). The wizard
+  **wired and wireless** medium runs the SSID flow and both checklists. The
+  Dashboard lists each lab's stored SSID and its RADIUS clients.
 
 ## Phase 5 — Appliance packaging
 

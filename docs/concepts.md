@@ -115,8 +115,12 @@ The lab runs a small local CA so you can experience the whole PKI lifecycle
 without standing up enterprise infrastructure:
 
 - **Root CA** — the trust anchor. The lab creates one per lab environment. Its
-  certificate is what FreeRADIUS trusts; any client certificate signed by it is
-  accepted.
+  certificate is what FreeRADIUS trusts; any client certificate in the chain
+  is accepted.
+- **Intermediate CA** (optional) — a CA the root signs, which then signs client
+  certs. This is the usual production shape (the root stays offline). Create it
+  from **Certificates**. The PKCS#12 and FreeRADIUS trust then include both
+  the intermediate and the root.
 - **Client certificate** — issued to an identity (e.g. `alice`). You download it
   as a PEM bundle or a `.p12` file to import on a device.
 - **Trust publishing** — for FreeRADIUS to accept EAP-TLS clients, it must trust
@@ -287,7 +291,10 @@ Access-Accept says. The parts that *are* wireless-specific are worth knowing:
 
 The **Wizard → wireless** path walks all of this: name the SSID, create an
 identity, give it a VLAN, register the controller, run a live test, and finish
-with the exact values to type into the AP/WLC.
+with the exact values to type into the AP/WLC. **Wired and wireless** does the
+same SSID flow and then both checklists (switch ports and the AP/WLC). A
+classroom **guest SSID** is usually Central Web Auth (MAB → splash page → CoA);
+the **Guest** page is the lab stand-in for that portal.
 
 ## Authentication events: seeing what happened
 
@@ -320,5 +327,5 @@ are looking at, not what the lab does.
 
 - [Usage guide](usage.md) — do these things step by step in the UI.
 - [Architecture](architecture.md) — how the control plane, FreeRADIUS, and CA fit together.
-- [Roadmap](roadmap.md) — what's built and what's planned (step-ca, guest portal).
+- [Roadmap](roadmap.md) — what's built and what's still appliance packaging.
 

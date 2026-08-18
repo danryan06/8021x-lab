@@ -11,10 +11,11 @@ The control plane talks to CA implementations through the
 
 | Adapter | Status | Notes |
 |---------|--------|-------|
-| `openssl` | Active (default) | Local PEM tree under `CA_DATA_DIR`, backed by a per-lab openssl CA database |
-| `step-ca` | Stub | Smallstep step-ca integration; reserved for a later phase (raises `NotImplementedError`) |
+| `openssl` | Active (default) | Local PEM tree under `CA_DATA_DIR`, backed by a per-lab openssl CA database. Optional intermediate CA (`POST /ca/ensure-intermediate`) so client certs are not signed by the root. |
+| `step-ca` | HTTP client | Talks to a running Smallstep CA (`STEP_CA_URL`, `STEP_CA_TOKEN`) via `/root` and `/1.0/sign`. Not started by Compose. |
 
-Set `CA_ADAPTER=openssl` (default) or `CA_ADAPTER=step-ca` in `.env`.
+Set `CA_ADAPTER=openssl` (default) or `CA_ADAPTER=step-ca` in `.env`. step-ca also
+needs `STEP_CA_URL` and a provisioner token in `STEP_CA_TOKEN`.
 
 ## openssl adapter details
 
@@ -22,15 +23,19 @@ Each lab gets its own directory under `CA_DATA_DIR/<lab_id>/`:
 
 ```text
 certs/root.crt          Root CA certificate (trust anchor)
+certs/intermediate.crt  Optional intermediate (signs clients once created)
 private/root.key        Root CA private key
+private/intermediate.key Intermediate key
 certs/<identity>.crt    Issued client certificates
 private/<identity>.key  Client private keys
 certs/<identity>.p12    PKCS#12 bundle (empty passphrase, for device import)
-db/index.txt            openssl CA database of issued/revoked certs
+db/index.txt            openssl CA database of certs the *root* signed
+db-int/index.txt        Database of certs the *intermediate* signed
 db/newcerts/            Copies of issued certs, named by serial
 db/serial, db/crlnumber Monotonic counters
-openssl.cnf             Generated CA config
-crl.pem                 Current CRL
+openssl.cnf             Generated root CA config
+intermediate.cnf        Generated intermediate CA config
+crl.pem                 Current CRL (root, plus intermediate when present)
 ```
 
 Certificates are signed with `openssl ca` (not `x509 -req`) so every issue is

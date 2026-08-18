@@ -152,6 +152,15 @@ a switch port.
    **Reveal**), the VLAN that comes back, and the client you registered — every
    value the controller asks for, in one place.
 
+Pick **wired and wireless** when the same lab should drive both switch ports and
+an SSID. That path keeps the SSID step and the controller checklist, and also
+shows the wired hardware checklist. It registers a **switch** as the first RADIUS
+client (one source address is one client); add the WLC afterwards on **Clients**.
+
+The Dashboard **Wireless SSIDs** card lists each lab's stored SSID, security
+mode, VLAN, user group, and the RADIUS clients FreeRADIUS will accept for that
+lab.
+
 For EAP-TLS the wizard does not create a VLAN step, because certificate
 identities pick up attributes through user-group membership: create the policy on
 the **Authorization** page and make sure a lab user with that certificate's
@@ -190,8 +199,6 @@ Both are check items (`radcheck` / `radgroupcheck`), not reply attributes, so
 they do not show up in the Events "authorization" column; a failure looks like a
 normal Access-Reject.
 
-After a successful authentication, check the **Authorization** column on **Auth
-
 One policy per user group — if two policies claimed the same group, FreeRADIUS
 would merge both into one reply, which is rarely what you meant.
 
@@ -210,6 +217,10 @@ The **Certificates** page is the CA inventory for a lab:
 - **Revoke** — invalidate a certificate. This records it in the CA database,
   regenerates the **CRL**, and republishes trust to FreeRADIUS. Download the CRL
   with **Download CRL**.
+- **Create intermediate CA** — optional teaching chain: the root signs an
+  intermediate, and that intermediate signs client certs. PKCS#12 bundles and
+  FreeRADIUS trust then carry both. step-ca labs skip this — that CA already
+  issues from its own intermediate.
 
 Whether FreeRADIUS actually *rejects* a revoked certificate during EAP-TLS
 depends on CRL enforcement, which is **off by default**. To try it, set
@@ -265,6 +276,22 @@ opening every event. Common reject summaries:
 | Unknown MAC address | No endpoint registered for that MAC | Add it on **Endpoints** |
 | Endpoint is disabled | Registered but not synced to FreeRADIUS | Re-enable it on **Endpoints** |
 
+## Guide: guest / captive portal
+
+A real guest SSID uses **Central Web Auth**: the client is MAB-accepted into a
+redirect VLAN, hits a splash page, then RADIUS sends CoA into a guest VLAN.
+This lab cannot intercept that HTTP redirect, so the **Guest** page *is* the
+portal.
+
+1. Open **Guest**, pick a lab, optionally a name and duration, and **Connect**.
+2. The lab creates a PEAP user in the `guests` group (password shown once) and,
+   on the first guest, an authorization policy that returns the guest VLAN /
+   `Filter-Id`.
+3. Prove it with **Auth Test → PEAP**, or from **Endpoints** push CoA after a
+   MAB session if you are simulating the post-portal VLAN change.
+
+Advanced mode lets you set the VLAN and role; Simple uses VLAN 40 / `guest-acl`.
+
 ## Guide: keeping FreeRADIUS in sync
 
 Most changes sync automatically, but **Sync to FreeRADIUS** (Dashboard, Users,
@@ -273,6 +300,7 @@ Clients) forces a full resync after bulk edits. What each change does:
 | Action | FreeRADIUS effect |
 |--------|-------------------|
 | Create/update/delete/generate/import user | Upsert/delete `radcheck` NT-Password |
+| Guest portal Connect | Same as create user (`guests` group) plus a Guest VLAN policy if missing |
 | Create/update/delete RADIUS client | Rewrite clients config + controlled restart |
 | Create/update/delete/generate endpoint | Upsert/delete `radcheck` (`Auth-Type := Accept`) + `radreply` for every MAC spelling |
 | Disconnect / Push policy (CoA) | `radclient` Disconnect-Request or CoA-Request to the NAS (UDP 3799) or the lab CoA sink |

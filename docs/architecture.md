@@ -17,7 +17,7 @@
 | `backend` | FastAPI control plane, config render, CA adapter, event ingestion |
 | `db` | PostgreSQL — app data **and** FreeRADIUS SQL tables |
 | `freeradius` | RADIUS authentication data plane (PEAP/MSCHAPv2, EAP-TLS, MAB) |
-| CA volume | Local openssl adapter data (step-ca adapter planned) |
+| CA volume | Local openssl adapter data (optional step-ca HTTP adapter) |
 
 ## Control vs data plane
 
@@ -206,16 +206,20 @@ different VLANs.
 `CertificateAuthorityAdapter` protocol:
 
 - `ensure_root(lab_id)`
+- `ensure_intermediate(lab_id)` (openssl)
 - `issue_client_cert(lab_id, identity, days)`
 - `revoke(lab_id, cert_ref)`
 - `generate_crl(lab_id)`
 
 Adapters:
 
-- **openssl** (V1) — local PEM tree under `CA_DATA_DIR`, backed by a per-lab
+- **openssl** (default) — local PEM tree under `CA_DATA_DIR`, backed by a per-lab
   openssl CA database (`db/index.txt`, `db/newcerts/`, `serial`, `crlnumber`)
-  so certificates can be tracked, revoked, and listed in a CRL
-- **step-ca** (stub) — reserved for a later phase
+  so certificates can be tracked, revoked, and listed in a CRL. An optional
+  **intermediate** (`POST /ca/ensure-intermediate`) signs client certs; the root
+  stays the trust anchor FreeRADIUS and devices need.
+- **step-ca** — HTTP client for a running Smallstep CA (`STEP_CA_URL` +
+  `STEP_CA_TOKEN`). Compose still defaults to openssl.
 
 Issuance signs CSRs with `openssl ca` (not `x509 -req`) so each cert is recorded in the CA database. `revoke()` runs `openssl ca -revoke` and regenerates the CRL with `openssl ca -gencrl`. The CRL is published into `trusted/crl-bundle.pem`; FreeRADIUS only enforces it (adds `check_crl = yes` and loads the CRL alongside the CA certs) when `FREERADIUS_ENFORCE_CRL=yes`, because enabling CRL checking requires a current CRL for every trusted lab CA.
 
