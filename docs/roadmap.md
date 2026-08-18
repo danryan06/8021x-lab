@@ -99,8 +99,10 @@
 
 ## Phase 5 — Appliance packaging
 
+- Linux one-line installer (`scripts/install.sh`) plus schema/seed on backend
+  start, so a fresh machine is a single command (Compose-on-Linux path)
 - Ubuntu LTS image path, health UI, non-Docker operator UX
-- Later: OVA, Proxmox, Raspberry Pi
+- Later: OVA, Proxmox, Raspberry Pi prebuilt image
 
 ## Explicitly deferred
 

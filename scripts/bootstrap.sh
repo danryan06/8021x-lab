@@ -30,23 +30,23 @@ fi
 
 docker compose up -d --build
 
-# Retry migrations instead of a fixed sleep: on slow machines / cold caches the
-# database can take well over 8s, and a single failed attempt aborted bootstrap.
-echo "Applying database migrations..."
-migrated=0
-for attempt in $(seq 1 30); do
-  if docker compose exec -T backend alembic upgrade head; then
-    migrated=1
+# Schema + Default Lab seed run inside the backend container on start. Wait until
+# the API is listening so a slow first boot cannot look "ready" too early.
+echo "Waiting for the API (database schema is applied automatically)..."
+ready=0
+for attempt in $(seq 1 45); do
+  if docker compose exec -T backend python -c \
+    "import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()"; then
+    ready=1
     break
   fi
-  echo "Database not ready yet (attempt ${attempt}/30); retrying in 2s..."
+  echo "API not ready yet (attempt ${attempt}/45); retrying in 2s..."
   sleep 2
 done
-if [[ "${migrated}" -ne 1 ]]; then
-  echo "ERROR: migrations did not apply after 60s. Check: docker compose logs db backend" >&2
+if [[ "${ready}" -ne 1 ]]; then
+  echo "ERROR: API did not become ready after 90s. Check: docker compose logs db backend" >&2
   exit 1
 fi
-docker compose exec -T backend python -m app.seed
 
 # Persist detected host IP into the shared runtime volume for the API auto mode.
 if [[ -n "${HOST_IP}" ]]; then

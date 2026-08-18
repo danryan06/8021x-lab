@@ -39,7 +39,9 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Best-effort bootstrap: migrations may still be running on first boot.
+    # Best-effort control-plane sync. Schema is applied by the container
+    # entrypoint before uvicorn listens; this still guards a race with an
+    # empty volume on a very slow first boot.
     try:
         with SessionLocal() as db:
             sync_all_users(db)

@@ -18,20 +18,17 @@ Raspberry Pi notes), use the [installation guide](installation.md) instead. To
 
 ```bash
 cp .env.example .env
-make up
-make migrate
-make seed
+make bootstrap
 ```
 
-Or one shot: `make bootstrap`.
+`make up` alone is enough to start Compose after `.env` exists: the backend
+applies the schema and seeds the Default Lab before it listens.
 
 - UI: http://localhost:3000 (nginx proxies `/api` to the backend)
 - API docs: http://localhost:8000/docs (also available via http://localhost:3000/docs)
 - Default admin: values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
 - RADIUS: UDP `1812` / `1813` (FreeRADIUS with SQL + PEAP / EAP-TLS). CoA uses
   UDP `3799` toward the NAS or the backend's loopback sink (not published).
-
-**Important:** run `make migrate` before relying on RADIUS auth — it creates FreeRADIUS SQL tables (`radcheck`, `nas`, …). The FreeRADIUS container waits for those tables on startup.
 
 ## Test from the UI (preferred)
 
@@ -92,8 +89,8 @@ Or manually with host `eapol_test` against `127.0.0.1:1812` / `testing123` (see 
 | `make up` | Start all Compose services |
 | `make down` | Stop services |
 | `make logs` | Tail logs |
-| `make migrate` | Run Alembic migrations (app + FreeRADIUS SQL schema) |
-| `make seed` | Seed a default lab |
+| `make migrate` | Re-apply schema + Default Lab seed (already runs on backend start) |
+| `make seed` | Seed a default lab (no-op if it exists) |
 | `make test-peap` | CLI PEAP smoke test |
 | `make lint` | Ruff lint the backend |
 | `make test` | Run the backend pytest suite |
@@ -133,6 +130,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 export DATABASE_URL=postgresql+psycopg://dot1x:dot1x_lab_change_me@localhost:5432/dot1x_lab
+python -m app.runtime_setup   # schema + Default Lab (Compose does this for you)
 uvicorn app.main:app --reload --port 8000
 ```
 

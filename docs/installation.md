@@ -194,12 +194,11 @@ and creates a starter "Default Lab":
 make bootstrap
 ```
 
-**No `make`?** Run the equivalent commands directly:
+**No `make`?** `./scripts/bootstrap.sh` is the same command. Or start Compose
+directly — schema and the Default Lab are created as the backend starts:
 
 ```bash
-docker compose up -d --build         # build and start everything in the background
-docker compose exec backend alembic upgrade head   # create the database tables
-docker compose exec backend python -m app.seed     # create the Default Lab
+docker compose up -d --build
 ```
 
 The **first run downloads and builds images and will take a while** — a few
@@ -261,7 +260,6 @@ plain `docker compose` form do the same thing.
 | Stop (keeps data) | `make down` | `docker compose down` |
 | View logs | `make logs` | `docker compose logs -f` |
 | See service status | `make ps` | `docker compose ps` |
-| Re-run database setup | `make migrate` | `docker compose exec backend alembic upgrade head` |
 
 Your data (users, certificates, events) lives in Docker volumes and survives
 stop/start. It is only removed if you explicitly delete the volumes
@@ -276,8 +274,7 @@ If you cloned with Git, update in place:
 ```bash
 cd ~/8021x-lab
 git pull                       # download the latest code
-make up                        # rebuild and restart with the changes
-make migrate                   # apply any new database changes
+make up                        # rebuild and restart; schema updates apply on backend start
 ```
 
 ---
@@ -311,9 +308,10 @@ Verify with `docker ps` (should print an empty table, not an error), then re-run
 **The first `make bootstrap` seems stuck.** The initial image build is genuinely
 slow, especially on a Pi. Watch progress in another terminal with `make logs`.
 
-**Migrations failed / the database wasn't ready.** `bootstrap` retries
-automatically, but on a very slow machine you can re-run `make migrate` once the
-database is up.
+**The API never became ready / backend logs show schema errors.** The backend
+applies the database schema as it starts and retries if Postgres is still coming
+up. On a very slow machine, wait and check `docker compose logs backend`.
+Re-running `make bootstrap` is safe.
 
 **The UI loads but says it can't reach the API.** Give it a few more seconds after
 startup, then refresh; check `make ps` shows all services as `running`/`healthy`.

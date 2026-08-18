@@ -51,7 +51,7 @@ jobs:
         run: |
           set -e
           for f in scripts/*.sh services/freeradius/docker-entrypoint.sh \
-                   services/freeradius/scripts/*.sh; do
+                   services/freeradius/scripts/*.sh backend/docker-entrypoint.sh; do
             bash -n "$f"
             echo "OK: $f"
           done

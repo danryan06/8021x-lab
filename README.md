@@ -15,6 +15,9 @@ Docker/Git if missing, downloads the code, and starts the lab:
 curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/install.sh | bash
 ```
 
+That is the whole bring-up on a fresh 64-bit Linux machine: Docker, the code,
+database schema, and the UI. You do not run a separate migrate command.
+
 Already have Docker + Git and prefer the manual way:
 
 ```bash
