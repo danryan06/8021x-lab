@@ -17,7 +17,9 @@ docker compose up -d --build
 A fresh Postgres volume is empty. The backend container applies the schema and
 creates the Default Lab **before the API listens**, so operators do not run
 Alembic. The one-line installer (`scripts/install.sh`) is the supported
-bring-up: it installs Docker if needed, clones the repo, and runs that stack.
+bring-up: it installs Docker if needed, clones the repo, **wipes any previous
+lab volumes**, and runs that stack. Keep data across an update with
+`DOT1X_LAB_KEEP_DATA=1` or `git pull && make up`.
 
 Published ports (default):
 
@@ -62,8 +64,8 @@ testing real switches/APs.
 The supported **single installer** on 64-bit Linux is
 [`scripts/install.sh`](../scripts/install.sh) — see the
 [installation guide](installation.md). It installs Docker if needed, clones the
-repo, and starts Compose. Schema updates apply whenever the backend container
-starts.
+repo, wipes previous lab volumes, and starts Compose. Schema updates apply
+whenever the backend container starts.
 
 Prebuilt, Docker-free images are **not implemented yet**:
 

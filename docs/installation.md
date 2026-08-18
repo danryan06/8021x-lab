@@ -38,8 +38,10 @@ bash install.sh        # then run it
 - It handles the Docker permission setup for you (no mid-install reboot needed);
   it just reminds you at the end to log out/in once so `docker` works without
   `sudo` in future sessions.
-- **Safe to re-run** — running it again later pulls the latest code and rebuilds,
-  so it doubles as the updater.
+- **Re-running is a clean reinstall.** It pulls the latest code, deletes the
+  previous lab database / RADIUS logs / certificates, and starts fresh. Your
+  `.env` (admin password, secrets) is kept. To update *without* wiping data:
+  `git pull && make up`, or `DOT1X_LAB_KEEP_DATA=1 bash install.sh`.
 - macOS/Windows aren't covered by the script — follow the manual steps below
   with Docker Desktop.
 
@@ -258,12 +260,13 @@ plain `docker compose` form do the same thing.
 |------|-------------|-----------------------|
 | Start | `make up` | `docker compose up -d` |
 | Stop (keeps data) | `make down` | `docker compose down` |
+| Clean reinstall (wipe data) | `make reset` then `make up` | `./scripts/reset-lab.sh` then `docker compose up -d --build` |
 | View logs | `make logs` | `docker compose logs -f` |
 | See service status | `make ps` | `docker compose ps` |
 
-Your data (users, certificates, events) lives in Docker volumes and survives
-stop/start. It is only removed if you explicitly delete the volumes
-([see below](#uninstalling-or-resetting)).
+Your data (users, certificates, events, RADIUS logs) lives in Docker volumes and
+survives stop/start. The one-line installer deletes those volumes on every
+re-run so you get a clean lab. `make bootstrap` / `make up` do **not** wipe.
 
 ---
 
@@ -327,8 +330,10 @@ Still stuck? Grab the logs with `make logs` and open an issue on the
 # Stop and remove the containers (keeps your data volumes)
 make down
 
-# Full reset: also delete all data (users, certs, events, database)
-docker compose down -v
+# Full reset: delete all data (users, certs, events, RADIUS logs, database)
+# The one-line installer does this automatically on every re-run.
+make reset
+# same as: docker compose down -v   (plus leftover volumes from older project names)
 
 # Remove the code entirely
 cd ~ && rm -rf 8021x-lab
