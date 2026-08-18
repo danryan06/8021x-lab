@@ -9,6 +9,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { EndpointsPage } from "./pages/EndpointsPage";
 import { EventsPage } from "./pages/EventsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { WizardPage } from "./pages/WizardPage";
@@ -40,6 +41,9 @@ export default function App() {
         <Route path="certificates" element={<CertificatesPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="wizard" element={<WizardPage />} />
+        {/* Unmatched paths are children of the layout route, so a stale bookmark
+            still gets the nav bar (and, when signed out, the /login redirect). */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
