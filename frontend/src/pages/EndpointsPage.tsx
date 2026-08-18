@@ -6,8 +6,11 @@ import {
   type Endpoint,
   type FreeRadiusSyncResponse,
   type Lab,
+  type SessionActionKind,
+  type SessionActionResponse,
+  type SessionActionTargets,
 } from "../api/client";
-import { InfoTip } from "../components/ui";
+import { InfoTip, ReplyAttributes } from "../components/ui";
 import { useMode } from "../modes/ModeContext";
 
 type BulkResponse = {
@@ -56,17 +59,27 @@ export function EndpointsPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
+  // CoA / Disconnect: default target is the in-process lab sink.
+  const [coaTarget, setCoaTarget] = useState("");
+  const [coaTargets, setCoaTargets] = useState<SessionActionTargets | null>(null);
+  const [coaBusy, setCoaBusy] = useState<string | null>(null);
+  const [lastCoa, setLastCoa] = useState<SessionActionResponse | null>(null);
+
   async function refresh(selectedLab: string) {
-    const [endpointData, policyData] = await Promise.all([
+    const [endpointData, policyData, targetData] = await Promise.all([
       apiFetch<Endpoint[]>(
         selectedLab ? `/endpoints?lab_id=${selectedLab}` : "/endpoints",
       ),
       apiFetch<AuthzPolicy[]>(
         selectedLab ? `/authz-policies?lab_id=${selectedLab}` : "/authz-policies",
       ),
+      selectedLab
+        ? apiFetch<SessionActionTargets>(`/session-actions/targets?lab_id=${selectedLab}`)
+        : Promise.resolve(null),
     ]);
     setEndpoints(endpointData);
     setPolicies(policyData);
+    setCoaTargets(targetData);
   }
 
   useEffect(() => {
@@ -259,6 +272,29 @@ export function EndpointsPage() {
     }
   }
 
+  async function onSessionAction(endpoint: Endpoint, action: SessionActionKind) {
+    setError(null);
+    setStatus(null);
+    setCoaBusy(`${endpoint.id}:${action}`);
+    try {
+      const res = await apiFetch<SessionActionResponse>("/session-actions", {
+        method: "POST",
+        body: JSON.stringify({
+          action,
+          endpoint_id: endpoint.id,
+          client_id: coaTarget || null,
+        }),
+      });
+      setLastCoa(res);
+      if (res.result === "ack") setStatus(res.note);
+      else setError(res.failure_reason || res.note);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Session action failed");
+    } finally {
+      setCoaBusy(null);
+    }
+  }
+
   return (
     <div className="page-enter space-y-8">
       <section>
@@ -266,7 +302,9 @@ export function EndpointsPage() {
         <p className="mt-1 max-w-3xl text-ink/70">
           Devices that authenticate by MAC address because they cannot run 802.1X — printers,
           cameras, badge readers. Registering a MAC here lets FreeRADIUS accept it, and the
-          authorization policy you attach decides which VLAN/role it lands in.
+          authorization policy you attach decides which VLAN/role it lands in. Disconnect and
+          Push policy send RADIUS the other way (UDP 3799) so you can drop a session or change
+          that VLAN without waiting for the next authentication.
         </p>
       </section>
 
@@ -281,6 +319,8 @@ export function EndpointsPage() {
             value={labId}
             onChange={(e) => {
               setLabId(e.target.value);
+              setCoaTarget("");
+              setLastCoa(null);
               refresh(e.target.value).catch((err: Error) => setError(err.message));
             }}
           >
@@ -489,6 +529,49 @@ export function EndpointsPage() {
         </div>
       </section>
 
+      <section className="ui-panel p-5">
+        <h2 className="flex items-center gap-2 font-semibold">
+          Session control
+          <InfoTip label="What CoA and Disconnect-Request are">
+            Access-Request is the NAS asking RADIUS whether to let a device on.
+            CoA and Disconnect-Request reverse that: RADIUS tells the NAS to drop
+            a session or apply a new VLAN/role, on UDP 3799. Compose has no switch
+            listening there, so the default target is a sink in the backend that
+            ACKs the packet so you can see the exchange. Point it at a registered
+            RADIUS client to talk to real hardware that has dynamic authorization
+            enabled.
+          </InfoTip>
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm text-ink/70">
+          Disconnect sends a Disconnect-Request. Push policy sends a CoA-Request
+          carrying the endpoint&apos;s authorization attributes. Pick the target,
+          then use the buttons on a row.
+        </p>
+        <label className="mt-3 block max-w-lg text-sm">
+          Target
+          <select
+            className="ui-input mt-1"
+            value={coaTarget}
+            onChange={(e) => setCoaTarget(e.target.value)}
+          >
+            <option value="">
+              Lab CoA sink ({coaTargets?.sink.host}:{coaTargets?.sink.port}
+              {coaTargets && !coaTargets.sink_listening ? " — not listening" : ""})
+            </option>
+            {(coaTargets?.clients || [])
+              .filter((client) => client.enabled)
+              .map((client) => (
+                <option key={client.id || client.host} value={client.id || ""}>
+                  {client.name} ({client.host}:{client.port})
+                </option>
+              ))}
+          </select>
+        </label>
+        {isAdvanced && coaTargets?.sink.note && (
+          <p className="mt-2 text-xs text-ink/55">{coaTargets.sink.note}</p>
+        )}
+      </section>
+
       <section className="overflow-x-auto ui-panel">
         <p className="border-b border-ink/10 px-4 py-2 text-xs text-ink/55">
           Disabling an endpoint removes its rows from FreeRADIUS, so the MAC starts rejecting —
@@ -496,7 +579,8 @@ export function EndpointsPage() {
           <Link className="underline" to="/events">
             Events
           </Link>{" "}
-          page.
+          page. Disconnect / Push policy do not change those rows; they talk to the NAS
+          (or the lab sink) about a session that is already up.
         </p>
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-ink/10 bg-mist/40">
@@ -608,6 +692,22 @@ export function EndpointsPage() {
                       </button>
                       <button
                         type="button"
+                        className="ui-btn-ghost px-2 py-1 text-xs"
+                        disabled={coaBusy !== null}
+                        onClick={() => onSessionAction(endpoint, "disconnect")}
+                      >
+                        {coaBusy === `${endpoint.id}:disconnect` ? "Disconnecting…" : "Disconnect"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-btn-ghost px-2 py-1 text-xs"
+                        disabled={coaBusy !== null}
+                        onClick={() => onSessionAction(endpoint, "coa")}
+                      >
+                        {coaBusy === `${endpoint.id}:coa` ? "Pushing…" : "Push policy"}
+                      </button>
+                      <button
+                        type="button"
                         className="ui-btn-ghost px-2 py-1 text-xs text-fail"
                         onClick={() => onDelete(endpoint)}
                       >
@@ -632,6 +732,37 @@ export function EndpointsPage() {
           </tbody>
         </table>
       </section>
+
+      {lastCoa && (
+        <section className="ui-panel p-5">
+          <h2 className="font-semibold">Last session action</h2>
+          <p className="mt-1 text-sm text-ink/70">
+            {lastCoa.packet_type || lastCoa.result} for {lastCoa.identity} → {lastCoa.nas_name} (
+            {lastCoa.nas_ip}:{lastCoa.nas_port})
+            {lastCoa.used_lab_sink ? " · lab sink" : ""}
+            {lastCoa.policy_name ? ` · policy ${lastCoa.policy_name}` : ""}
+          </p>
+          <div className="mt-3 grid gap-4 md:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink/50">Sent</p>
+              <div className="mt-1">
+                <ReplyAttributes attributes={lastCoa.attributes_sent} verbose={isAdvanced} />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink/50">Returned</p>
+              <div className="mt-1">
+                <ReplyAttributes attributes={lastCoa.attributes_returned} verbose={isAdvanced} />
+              </div>
+            </div>
+          </div>
+          {isAdvanced && (
+            <pre className="mt-4 max-h-64 overflow-auto border border-ink/10 bg-mist/60 p-3 font-mono text-xs">
+              {lastCoa.output || "(radclient produced no output)"}
+            </pre>
+          )}
+        </section>
+      )}
     </div>
   );
 }

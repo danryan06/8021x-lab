@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     freeradius_auth_port: int = 1812
     # Matches services/freeradius docker-entrypoint lab-docker-host client.
     freeradius_lab_secret: str = "testing123"
+    # CoA / Disconnect-Request (RFC 5176) destination port on the NAS.
+    coa_port: int = 3799
+    # Loopback sink in the backend process so Compose demos get an ACK without
+    # a switch listening on 3799. Not published to the host.
+    coa_sink_host: str = "127.0.0.1"
+    coa_sink_enabled: bool = True
     # FreeRADIUS EAP server CA copied onto the shared runtime volume.
     freeradius_ca_path: str = "/var/lib/dot1x-lab/freeradius/certs/ca.pem"
     freeradius_health_max_age_seconds: int = 45

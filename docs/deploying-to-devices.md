@@ -103,6 +103,13 @@ Then, in the lab UI, register this switch under **RADIUS Clients** with the
 switch's **source IP** (the interface it sources RADIUS from) and the same
 **shared secret**. Connect a configured endpoint and watch **Auth Events**.
 
+To send a Disconnect-Request or CoA from the lab, enable **dynamic authorization**
+on the switch (Cisco: `aaa server radius dynamic-author`, client = the lab's
+RADIUS target IP, port 3799, same secret) and use **Endpoints → Disconnect** /
+**Push policy** with that RADIUS client selected as the target. Compose-only
+demos use the lab CoA sink instead — see
+[session control](concepts.md#session-control-coa-and-disconnect-request).
+
 ---
 
 ## Part C — Configure a wireless SSID for WPA2/3-Enterprise

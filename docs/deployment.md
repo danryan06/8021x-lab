@@ -25,6 +25,10 @@ Published ports (default):
 | 127.0.0.1:5432 | PostgreSQL (host-loopback only — it stores NT hashes) |
 | 1812/udp, 1813/udp | RADIUS auth/acct |
 
+CoA/Disconnect uses UDP **3799** toward the NAS (or the in-process lab sink on
+the backend loopback). That port is **not** published; Compose demos talk to the
+sink inside the backend container.
+
 ### Reaching FreeRADIUS from a real NAS
 
 1. Set the lab **RADIUS target** in the UI (Dashboard → RADIUS target):

@@ -57,8 +57,12 @@
 - Returned attributes are recorded on each event and shown in the Events UI
 - Dashboard endpoint/policy counts + recent MAB activity; guided **MAB wizard
   path** (policy → endpoint → client → test → events)
-- Remaining: per-endpoint MAB session controls (CoA / Disconnect-Request),
-  time-of-day and NAS-scoped policy conditions
+- **CoA / Disconnect-Request** from the Endpoints page: RADIUS originates a
+  Disconnect-Request (drop the session) or CoA-Request (push the endpoint's VLAN/
+  role) toward the NAS on UDP 3799. Compose has no switch listening, so a **lab
+  CoA sink** in the backend ACKs the packet for demos; a registered RADIUS client
+  is the path to real hardware with dynamic authorization enabled
+- Remaining: time-of-day and NAS-scoped policy conditions
 
 ## Phase 4 — Wizard expansions (done)
 

@@ -28,7 +28,8 @@ Or one shot: `make bootstrap`.
 - UI: http://localhost:3000 (nginx proxies `/api` to the backend)
 - API docs: http://localhost:8000/docs (also available via http://localhost:3000/docs)
 - Default admin: values from `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
-- RADIUS: UDP `1812` / `1813` (FreeRADIUS with SQL + PEAP / EAP-TLS)
+- RADIUS: UDP `1812` / `1813` (FreeRADIUS with SQL + PEAP / EAP-TLS). CoA uses
+  UDP `3799` toward the NAS or the backend's loopback sink (not published).
 
 **Important:** run `make migrate` before relying on RADIUS auth — it creates FreeRADIUS SQL tables (`radcheck`, `nas`, …). The FreeRADIUS container waits for those tables on startup.
 

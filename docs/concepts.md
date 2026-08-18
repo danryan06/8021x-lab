@@ -217,6 +217,33 @@ authentication records the attributes that were actually returned, and the Event
 page shows them — so you can confirm the switch really received `VLAN 40` rather
 than assuming it did.
 
+## Session control: CoA and Disconnect-Request
+
+Access-Request always travels **NAS → RADIUS** (UDP 1812). Once a session is up,
+the RADIUS side can talk back to the NAS without waiting for the next
+authentication:
+
+- **Disconnect-Request** (UDP **3799**): drop this session now.
+- **CoA-Request** (Change of Authorization, same port): keep the session but
+  apply a new VLAN or role.
+
+That reverse direction is the part that surprises people. The switch is still
+the authenticator — it owns the port — but RADIUS can tell it to change what
+the port is doing. This is how a NAC kicks a device or moves it after posture.
+
+The lab originates these packets with `radclient` from the backend container,
+using the endpoint's MAC as `User-Name` and `Calling-Station-Id`. Compose has
+no switch listening on 3799, so a Disconnect aimed at `10.0.0.1` times out. The
+default target is therefore a **lab CoA sink**: a small RADIUS responder in the
+backend process that ACKs the packet so you can see the exchange. It does not
+drop a real session.
+
+To talk to real hardware, pick a registered RADIUS client as the target. That
+device must have **dynamic authorization** enabled (Cisco IOS:
+`aaa server radius dynamic-author`) and listen on UDP 3799 with the same shared
+secret you stored on the client. The Endpoints page has Disconnect and Push
+policy on each row.
+
 ## Wireless: the same 802.1X, with the AP as the authenticator
 
 Nothing about RADIUS changes on Wi-Fi. The access point or wireless LAN
@@ -279,4 +306,4 @@ are looking at, not what the lab does.
 
 - [Usage guide](usage.md) — do these things step by step in the UI.
 - [Architecture](architecture.md) — how the control plane, FreeRADIUS, and CA fit together.
-- [Roadmap](roadmap.md) — what's built and what's planned (CoA, policy conditions, step-ca).
+- [Roadmap](roadmap.md) — what's built and what's planned (policy conditions, step-ca).

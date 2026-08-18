@@ -286,6 +286,45 @@ export type AuthTestResponse = {
   returned_attributes: Record<string, string>;
 };
 
+export type SessionActionKind = "disconnect" | "coa";
+
+export type SessionActionTarget = {
+  id: string | null;
+  name: string;
+  host: string;
+  port: number;
+  kind: "sink" | "nas" | string;
+  device_type: string | null;
+  enabled: boolean;
+  note: string | null;
+};
+
+export type SessionActionTargets = {
+  sink: SessionActionTarget;
+  clients: SessionActionTarget[];
+  sink_listening: boolean;
+};
+
+export type SessionActionResponse = {
+  action: SessionActionKind;
+  result: "ack" | "nak" | "timeout" | "error" | string;
+  packet_type: string | null;
+  identity: string;
+  calling_station_id: string;
+  nas_ip: string;
+  nas_port: number;
+  nas_name: string;
+  used_lab_sink: boolean;
+  shared_secret_hint: string;
+  attributes_sent: Record<string, string>;
+  attributes_returned: Record<string, string>;
+  output: string;
+  failure_reason: string | null;
+  last_seen_nas_ip: string | null;
+  policy_name: string | null;
+  note: string;
+};
+
 export type FreeRadiusSyncResponse = {
   users_synced: number;
   clients_synced: number;

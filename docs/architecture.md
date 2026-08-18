@@ -138,6 +138,24 @@ building the same request a switch sends: MAC as `User-Name`/`User-Password`,
 as `NAS-IP-Address`. `radclient` exits 0 for any answered request, so the reply
 packet type — not the exit code — decides accept vs reject.
 
+### CoA / Disconnect path
+
+Session control is the opposite direction: the backend runs `radclient` toward
+the NAS (or the lab CoA sink) on UDP **3799**, with `disconnect` or `coa` as the
+packet type. The document identifies the session with `User-Name` and
+`Calling-Station-Id` (the endpoint MAC); a CoA-Request also carries the
+authorization attributes the policy would have returned on Access-Accept.
+
+The **lab CoA sink** is an in-process RADIUS responder bound to the backend
+loopback (`127.0.0.1:3799` by default, secret `FREERADIUS_LAB_SECRET`). It is
+not published to the host. It ACKs any well-formed CoA/Disconnect that includes
+an identity, and NAKs (Error-Cause 404) if both `User-Name` and
+`Calling-Station-Id` are missing. A registered RADIUS client is used when the
+operator wants to talk to real hardware that has dynamic authorization enabled.
+
+`POST /api/session-actions` returns 200 with `result: ack|nak|timeout|error`
+rather than failing the HTTP request on NAK/timeout, matching Auth Test.
+
 ### Auth event ingestion
 
 FreeRADIUS module `linelog_dot1x` writes:
