@@ -11,7 +11,7 @@ import {
   type RadiusUser,
 } from "../api/client";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
-import { InfoTip, ReplyAttributes } from "../components/ui";
+import { InfoTip, PasswordInput, ReplyAttributes } from "../components/ui";
 import { useMode } from "../modes/ModeContext";
 
 type TestMethod = "peap" | "eap_tls" | "mab";
@@ -374,13 +374,12 @@ export function AuthTestPage() {
             </label>
             <label className="text-sm">
               Password
-              <input
-                type="password"
-                className="ui-input"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password used when creating the user"
                 required
+                autoComplete="current-password"
               />
             </label>
           </div>

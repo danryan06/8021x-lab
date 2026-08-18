@@ -2,7 +2,7 @@ import { FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../api/AuthContext";
 import { useTheme } from "../modes/ThemeContext";
-import { Button, Field, StatusBanner } from "../components/ui";
+import { Button, Field, PasswordInput, StatusBanner } from "../components/ui";
 
 export function LoginPage() {
   const { token, login } = useAuth();
@@ -52,9 +52,7 @@ export function LoginPage() {
           />
         </Field>
         <Field label="Password" className="mt-4">
-          <input
-            type="password"
-            className="ui-input"
+          <PasswordInput
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
