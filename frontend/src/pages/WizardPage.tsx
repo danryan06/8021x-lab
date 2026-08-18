@@ -338,9 +338,14 @@ export function WizardPage() {
     );
   }, [medium]);
 
-  function next() {
+  /**
+   * Move to the next step, carrying a note about what just happened. The note
+   * belongs to the step you land on: setting it before advancing lost it, since
+   * both updates batch and the move cleared the banner.
+   */
+  function next(done?: string) {
     setError(null);
-    setStatus(null);
+    setStatus(done || null);
     setStepIndex((i) => Math.min(i + 1, steps.length - 1));
   }
 
@@ -398,8 +403,7 @@ export function WizardPage() {
           setBusy(false);
         }
       }
-      setStatus("Using selected lab.");
-      next();
+      next("Using selected lab.");
       return;
     }
     if (!newLabName) {
@@ -427,8 +431,7 @@ export function WizardPage() {
       setLabs((prev) => [...prev, lab]);
       setLabId(lab.id);
       setLabChoice("existing");
-      setStatus(`Lab “${lab.name}” created.`);
-      next();
+      next(`Lab “${lab.name}” created.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lab create failed");
     } finally {
@@ -451,8 +454,7 @@ export function WizardPage() {
         }),
       });
       setCreatedUser(user);
-      setStatus(`User ${user.username} created and synced to FreeRADIUS.`);
-      next();
+      next(`User ${user.username} created and synced to FreeRADIUS.`);
     } catch {
       try {
         const users = await apiFetch<RadiusUser[]>(`/users?lab_id=${labId}`);
@@ -469,8 +471,7 @@ export function WizardPage() {
             }),
           });
           setCreatedUser(existing);
-          setStatus(`Updated existing user ${username} and synced to FreeRADIUS.`);
-          next();
+          next(`Updated existing user ${username} and synced to FreeRADIUS.`);
           return;
         }
       } catch {
@@ -496,8 +497,7 @@ export function WizardPage() {
         body: JSON.stringify({ lab_id: labId, common_name: "802.1X Lab Root CA" }),
       });
       setCaInfo(`${info.name} · FreeRADIUS trust: ${info.freeradius_trust}`);
-      setStatus("Lab root CA ready and published to FreeRADIUS trust store.");
-      next();
+      next("Lab root CA ready and published to FreeRADIUS trust store.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "CA ensure failed");
     } finally {
@@ -519,8 +519,7 @@ export function WizardPage() {
         body: JSON.stringify({ lab_id: labId, identity: certIdentity }),
       });
       setCertInfo(`${issued.subject} · serial ${issued.serial}`);
-      setStatus("Client certificate issued. Download the bundle for your endpoint if needed.");
-      next();
+      next("Client certificate issued. Download the bundle for your endpoint if needed.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Certificate issue failed");
     } finally {
@@ -544,8 +543,7 @@ export function WizardPage() {
       });
       setCreatedPolicy(policy);
       if (wireless) await saveWirelessProfile(labId, policy.vlan, null);
-      setStatus(`Policy “${policy.name}” created — returns ${policy.summary}.`);
-      next();
+      next(`Policy “${policy.name}” created — returns ${policy.summary}.`);
     } catch {
       // A repeated run of the guided flow should reuse the policy it made last time.
       try {
@@ -554,8 +552,7 @@ export function WizardPage() {
         if (existing) {
           setCreatedPolicy(existing);
           if (wireless) await saveWirelessProfile(labId, existing.vlan, null);
-          setStatus(`Using existing policy “${existing.name}” — returns ${existing.summary}.`);
-          next();
+          next(`Using existing policy “${existing.name}” — returns ${existing.summary}.`);
           return;
         }
       } catch {
@@ -593,8 +590,7 @@ export function WizardPage() {
       });
       setCreatedPolicy(policy);
       await saveWirelessProfile(labId, vlan, WIZARD_USER_GROUP);
-      setStatus(`Policy “${policy.name}” created — returns ${policy.summary}.`);
-      next();
+      next(`Policy “${policy.name}” created — returns ${policy.summary}.`);
     } catch {
       // Only one policy may claim a group, so a repeat run re-points the policy
       // that already owns it rather than failing on the second attempt.
@@ -608,11 +604,10 @@ export function WizardPage() {
           });
           setCreatedPolicy(updated);
           await saveWirelessProfile(labId, vlan, WIZARD_USER_GROUP);
-          setStatus(
+          next(
             `Reused policy “${updated.name}” for the ${WIZARD_USER_GROUP} group — returns ` +
               `${updated.summary}.`,
           );
-          next();
           return;
         }
       } catch {
@@ -641,8 +636,7 @@ export function WizardPage() {
         }),
       });
       setCreatedEndpoint(endpoint);
-      setStatus(`Endpoint ${endpoint.mac_address} registered and synced to FreeRADIUS.`);
-      next();
+      next(`Endpoint ${endpoint.mac_address} registered and synced to FreeRADIUS.`);
     } catch {
       try {
         const endpoints = await apiFetch<Endpoint[]>(`/endpoints?lab_id=${labId}`);
@@ -658,8 +652,7 @@ export function WizardPage() {
             }),
           });
           setCreatedEndpoint(updated);
-          setStatus(`Reused endpoint ${updated.mac_address} and synced to FreeRADIUS.`);
-          next();
+          next(`Reused endpoint ${updated.mac_address} and synced to FreeRADIUS.`);
           return;
         }
       } catch {
@@ -687,8 +680,7 @@ export function WizardPage() {
         }),
       });
       setCreatedClient(client);
-      setStatus("RADIUS client synced — FreeRADIUS reload requested.");
-      next();
+      next("RADIUS client synced — FreeRADIUS reload requested.");
     } catch (err) {
       try {
         // One address can only hold one client, and FreeRADIUS serves every lab
@@ -704,10 +696,7 @@ export function WizardPage() {
           const owner = labs.find((lab) => lab.id === existing.lab_id);
           const elsewhere =
             existing.lab_id !== labId && owner ? ` — registered in lab “${owner.name}”` : "";
-          setStatus(
-            `Using existing RADIUS client “${existing.name}” (${existing.ip_address})${elsewhere}.`,
-          );
-          next();
+          next(`Using existing RADIUS client “${existing.name}” (${existing.ip_address})${elsewhere}.`);
           return;
         }
       } catch {
@@ -720,9 +709,7 @@ export function WizardPage() {
   }
 
   function skipClient() {
-    setError(null);
-    setStatus(null);
-    next();
+    next("No RADIUS client registered — the in-Compose test does not need one.");
   }
 
   async function runTest() {
@@ -756,8 +743,7 @@ export function WizardPage() {
       });
       setTestResult(res);
       if (res.matched_expectation && res.result === "success") {
-        setStatus(`${METHOD_LABELS[method]} Accept — check Events for the ingested record.`);
-        next();
+        next(`${METHOD_LABELS[method]} Accept — check Events for the ingested record.`);
       } else {
         setError(res.failure_reason || "Authentication did not succeed");
       }
@@ -1465,7 +1451,7 @@ export function WizardPage() {
           <Button variant="ghost" disabled={stepIndex === 0} onClick={back}>
             Back
           </Button>
-          <Button onClick={next}>Continue</Button>
+          <Button onClick={() => next()}>Continue</Button>
         </div>
       )}
 
