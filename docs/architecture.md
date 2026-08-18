@@ -113,6 +113,8 @@ into RADIUS attributes:
 | `vlan = 40` | `Tunnel-Type = VLAN`, `Tunnel-Medium-Type = IEEE-802`, `Tunnel-Private-Group-Id = 40` |
 | `role = "printer-acl"` | `Filter-Id = printer-acl` |
 | `reply_attributes` | each pair verbatim; a pair repeating a rendered name replaces it in place, so Advanced mode wins without emitting two rows for one attribute |
+| `conditions.login_time` | `Login-Time == Wk0800-1700` (check item, `radcheck` / `radgroupcheck`) |
+| `conditions.nas_ip` | `NAS-IP-Address == 10.0.0.1` (check item, same tables) |
 
 Those rows are written to one of two stock FreeRADIUS tables, depending on what
 the policy is attached to:

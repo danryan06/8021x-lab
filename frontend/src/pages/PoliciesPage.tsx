@@ -5,6 +5,7 @@ import {
   type AttributeCatalogEntry,
   type AuthzPolicy,
   type Lab,
+  type RadiusClient,
 } from "../api/client";
 import { InfoTip } from "../components/ui";
 import { useMode } from "../modes/ModeContext";
@@ -17,6 +18,14 @@ const VLAN_PRESETS = [
   { vlan: 20, label: "20 — Printers / IoT" },
   { vlan: 30, label: "30 — Guest" },
   { vlan: 99, label: "99 — Quarantine" },
+];
+
+const LOGIN_TIME_PRESETS = [
+  { value: "", label: "Any time" },
+  { value: "Wk0800-1700", label: "Weekdays 08:00–17:00" },
+  { value: "Wk0800-1800", label: "Weekdays 08:00–18:00" },
+  { value: "Sa-Su", label: "Weekends" },
+  { value: "Al1800-0800", label: "Evenings 18:00–08:00 (overnight)" },
 ];
 
 function rowsFromAttributes(attributes: Record<string, string>): AttributeRow[] {
@@ -38,6 +47,7 @@ export function PoliciesPage() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labId, setLabId] = useState("");
   const [policies, setPolicies] = useState<AuthzPolicy[]>([]);
+  const [clients, setClients] = useState<RadiusClient[]>([]);
   const [catalog, setCatalog] = useState<AttributeCatalogEntry[]>([]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -47,6 +57,9 @@ export function PoliciesPage() {
   const [roleEnabled, setRoleEnabled] = useState(false);
   const [role, setRole] = useState("");
   const [groupName, setGroupName] = useState("");
+  const [loginTimePreset, setLoginTimePreset] = useState("");
+  const [loginTimeCustom, setLoginTimeCustom] = useState("");
+  const [nasIp, setNasIp] = useState("");
   const [rows, setRows] = useState<AttributeRow[]>([]);
   const [enabled, setEnabled] = useState(true);
 
@@ -54,10 +67,16 @@ export function PoliciesPage() {
   const [status, setStatus] = useState<string | null>(null);
 
   async function refresh(selectedLab: string) {
-    const data = await apiFetch<AuthzPolicy[]>(
-      selectedLab ? `/authz-policies?lab_id=${selectedLab}` : "/authz-policies",
-    );
-    setPolicies(data);
+    const [policyData, clientData] = await Promise.all([
+      apiFetch<AuthzPolicy[]>(
+        selectedLab ? `/authz-policies?lab_id=${selectedLab}` : "/authz-policies",
+      ),
+      apiFetch<RadiusClient[]>(
+        selectedLab ? `/clients?lab_id=${selectedLab}` : "/clients",
+      ),
+    ]);
+    setPolicies(policyData);
+    setClients(clientData);
   }
 
   useEffect(() => {
@@ -83,6 +102,9 @@ export function PoliciesPage() {
     setRoleEnabled(false);
     setRole("");
     setGroupName("");
+    setLoginTimePreset("");
+    setLoginTimeCustom("");
+    setNasIp("");
     setRows([]);
     setEnabled(true);
   }
@@ -95,6 +117,11 @@ export function PoliciesPage() {
     setRoleEnabled(!!policy.role);
     setRole(policy.role || "");
     setGroupName(policy.group_name || "");
+    const loginTime = policy.conditions?.login_time || "";
+    const known = LOGIN_TIME_PRESETS.some((preset) => preset.value === loginTime);
+    setLoginTimePreset(loginTime && !known ? "custom" : loginTime);
+    setLoginTimeCustom(loginTime && !known ? loginTime : "");
+    setNasIp(policy.conditions?.nas_ip || "");
     setRows(rowsFromAttributes(policy.reply_attributes || {}));
     setEnabled(policy.enabled);
     setStatus(null);
@@ -106,12 +133,18 @@ export function PoliciesPage() {
     if (!labId) return;
     setError(null);
     setStatus(null);
+    const loginTime =
+      loginTimePreset === "custom" ? loginTimeCustom.trim() : loginTimePreset;
     const body = {
       name,
       vlan: vlanEnabled ? vlan : null,
       role: roleEnabled ? role || null : null,
       group_name: groupName || null,
       reply_attributes: attributesFromRows(rows),
+      conditions: {
+        login_time: loginTime || null,
+        nas_ip: nasIp.trim() || null,
+      },
       enabled,
     };
     try {
@@ -123,6 +156,7 @@ export function PoliciesPage() {
             clear_vlan: !vlanEnabled,
             clear_role: !roleEnabled,
             clear_group: !groupName,
+            clear_conditions: !loginTime && !nasIp.trim(),
           }),
         });
         setStatus(
@@ -168,7 +202,8 @@ export function PoliciesPage() {
         <p className="mt-1 max-w-3xl text-ink/70">
           Authentication answers “who are you?”; authorization answers “what do you get?”. A
           policy is the set of reply attributes FreeRADIUS returns with an Access-Accept — the
-          VLAN the port moves to, the role/ACL the NAS applies.
+          VLAN the port moves to, the role/ACL the NAS applies. Optional conditions restrict
+          when that accept is allowed (time of day) and which NAS may ask for it.
         </p>
       </section>
 
@@ -327,6 +362,79 @@ export function PoliciesPage() {
           </label>
         </div>
 
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm">
+            <span className="flex items-center gap-2">
+              Only at these times
+              <InfoTip label="What Login-Time does">
+                FreeRADIUS <code>Login-Time</code> is a check item, not a reply attribute.
+                If the clock is outside this window the request is rejected even when the MAC
+                or user is known. Leave as “Any time” for a 24×7 lab. Overnight windows
+                (18:00–08:00) wrap midnight, which is how night-shift policies are written.
+              </InfoTip>
+            </span>
+            <select
+              className="ui-input mt-1"
+              value={loginTimePreset}
+              onChange={(e) => setLoginTimePreset(e.target.value)}
+            >
+              {LOGIN_TIME_PRESETS.map((preset) => (
+                <option key={preset.value || "any"} value={preset.value}>
+                  {preset.label}
+                </option>
+              ))}
+              <option value="custom">Custom Login-Time…</option>
+            </select>
+            {loginTimePreset === "custom" && (
+              <input
+                className="ui-input mt-2 font-mono"
+                value={loginTimeCustom}
+                onChange={(e) => setLoginTimeCustom(e.target.value)}
+                placeholder="Wk0800-1700"
+              />
+            )}
+            {isAdvanced && (
+              <span className="mt-1 block text-xs text-ink/55">
+                Written to <code>radcheck</code>/<code>radgroupcheck</code> as{" "}
+                <code>Login-Time == …</code>.
+              </span>
+            )}
+          </label>
+          <label className="block text-sm">
+            <span className="flex items-center gap-2">
+              Only from this NAS
+              <InfoTip label="What NAS-IP-Address does">
+                The NAS puts its own address in <code>NAS-IP-Address</code> on the
+                Access-Request. Restricting the policy to one address is how you say “this VLAN
+                only on this switch”. Leave blank to answer any registered client. In Compose,
+                Auth Test sends the backend container’s address.
+              </InfoTip>
+            </span>
+            <select
+              className="ui-input mt-1"
+              value={nasIp}
+              onChange={(e) => setNasIp(e.target.value)}
+            >
+              <option value="">Any NAS</option>
+              {clients
+                .filter((client) => client.enabled)
+                .map((client) => (
+                  <option key={client.id} value={client.ip_address}>
+                    {client.name} ({client.ip_address})
+                  </option>
+                ))}
+            </select>
+            {isAdvanced && (
+              <input
+                className="ui-input mt-2 font-mono"
+                value={nasIp}
+                onChange={(e) => setNasIp(e.target.value)}
+                placeholder="10.0.0.1"
+              />
+            )}
+          </label>
+        </div>
+
         {isAdvanced && (
           <div className="border border-ink/10 bg-mist/30 p-4">
             <h3 className="text-sm font-semibold">Raw reply attributes</h3>
@@ -434,9 +542,15 @@ export function PoliciesPage() {
                           {attr.name} {attr.op} {attr.value}
                         </li>
                       ))}
-                      {policy.rendered_attributes.length === 0 && (
-                        <li className="text-ink/50">no attributes</li>
-                      )}
+                      {policy.rendered_check_items?.map((item) => (
+                        <li key={item.name} className="text-ink/70">
+                          {item.name} {item.op} {item.value}
+                        </li>
+                      ))}
+                      {policy.rendered_attributes.length === 0 &&
+                        !policy.rendered_check_items?.length && (
+                          <li className="text-ink/50">no attributes</li>
+                        )}
                     </ul>
                   ) : (
                     policy.summary || "—"

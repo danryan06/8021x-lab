@@ -174,6 +174,21 @@ Attach a policy in either of two places:
 | An endpoint | The **Authorization policy** field on Endpoints | That MAC, over MAB |
 | A user group | The **User group** field on the policy | Every user in that group, over PEAP and EAP-TLS |
 
+Optional **conditions** on the same form restrict *whether* the accept is allowed
+at all:
+
+- **Only at these times** writes FreeRADIUS `Login-Time` (`Wk0800-1700` is
+  weekdays 08:00–17:00). Outside that window a known identity is still rejected.
+- **Only from this NAS** writes `NAS-IP-Address` for one registered RADIUS
+  client. Leave it on **Any NAS** for UI Auth Tests — those come from the
+  backend container, not from the switch.
+
+Both are check items (`radcheck` / `radgroupcheck`), not reply attributes, so
+they do not show up in the Events "authorization" column; a failure looks like a
+normal Access-Reject.
+
+After a successful authentication, check the **Authorization** column on **Auth
+
 One policy per user group — if two policies claimed the same group, FreeRADIUS
 would merge both into one reply, which is rarely what you meant.
 
@@ -253,7 +268,7 @@ Clients) forces a full resync after bulk edits. What each change does:
 | Create/update/delete RADIUS client | Rewrite clients config + controlled restart |
 | Create/update/delete/generate endpoint | Upsert/delete `radcheck` (`Auth-Type := Accept`) + `radreply` for every MAC spelling |
 | Disconnect / Push policy (CoA) | `radclient` Disconnect-Request or CoA-Request to the NAS (UDP 3799) or the lab CoA sink |
-| Create/update/delete authorization policy | Rewrite `radreply` for endpoints using it and `radgroupreply` for its user group |
+| Create/update/delete authorization policy | Rewrite `radreply`/`radgroupreply` and `Login-Time`/`NAS-IP-Address` check items |
 | Issue certificate / create lab CA | Publish CA into trust; restart if trust changed |
 | Revoke certificate | Regenerate + publish CRL; restart if it changed |
 | Auth Test | Runs `eapol_test` (PEAP/EAP-TLS) or `radclient` (MAB) → FreeRADIUS → event |

@@ -217,6 +217,19 @@ authentication records the attributes that were actually returned, and the Event
 page shows them — so you can confirm the switch really received `VLAN 40` rather
 than assuming it did.
 
+A policy can also **refuse** the request before any of that happens. Optional
+**conditions** are check items, not reply attributes:
+
+- **Time of day** (`Login-Time`, e.g. `Wk0800-1700`) — weekdays 08:00–17:00.
+  Outside that window FreeRADIUS rejects even a known MAC or user. Overnight
+  windows such as `Al1800-0800` wrap midnight.
+- **NAS address** (`NAS-IP-Address`) — only this switch/WLC may use the policy.
+  The NAS puts its own address on the Access-Request; Auth Test sends the
+  backend container's address, which is why a NAS-scoped policy can look like
+  it "doesn't work" against the UI test until you leave the field blank.
+
+Leave both unset for a 24×7 lab that answers every registered client.
+
 ## Session control: CoA and Disconnect-Request
 
 Access-Request always travels **NAS → RADIUS** (UDP 1812). Once a session is up,
@@ -243,7 +256,6 @@ device must have **dynamic authorization** enabled (Cisco IOS:
 `aaa server radius dynamic-author`) and listen on UDP 3799 with the same shared
 secret you stored on the client. The Endpoints page has Disconnect and Push
 policy on each row.
-
 ## Wireless: the same 802.1X, with the AP as the authenticator
 
 Nothing about RADIUS changes on Wi-Fi. The access point or wireless LAN
@@ -306,4 +318,5 @@ are looking at, not what the lab does.
 
 - [Usage guide](usage.md) — do these things step by step in the UI.
 - [Architecture](architecture.md) — how the control plane, FreeRADIUS, and CA fit together.
-- [Roadmap](roadmap.md) — what's built and what's planned (policy conditions, step-ca).
+- [Roadmap](roadmap.md) — what's built and what's planned (step-ca, guest portal).
+

@@ -8,7 +8,7 @@ FreeRADIUS reads:
 | `radius_users` | `radcheck` (NT-Password) + `radusergroup` |
 | `radius_clients` | `nas` (mirror; clients load from the rendered file) |
 | `endpoints` (MAB) | `radcheck` (`Auth-Type := Accept`) + `radreply` |
-| `authz_policies` | `radreply` (per endpoint) / `radgroupreply` (per user group) |
+| `authz_policies` | `radreply` (per endpoint) / `radgroupreply` (per user group); `Login-Time` / `NAS-IP-Address` as `radcheck` / `radgroupcheck` |
 
 `rlm_sql` queries these tables per request, so endpoint/policy changes apply to
 the next Access-Request with no reload — unlike clients.conf, which FreeRADIUS
@@ -25,6 +25,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.integrations.freeradius.mab import mac_radius_usernames
+from app.integrations.freeradius.policy_conditions import render_check_items
 from app.integrations.freeradius.reply_attributes import render_policy_attributes
 from app.models.entities import AuthzPolicy, Endpoint, RadiusClient, RadiusUser, UserStatus
 
@@ -123,10 +124,20 @@ def _policy_reply_rows(policy: AuthzPolicy | None) -> list[tuple[str, str, str]]
     return [(a.name, a.op, a.value) for a in attributes]
 
 
+def _policy_check_rows(policy: AuthzPolicy | None) -> list[tuple[str, str, str]]:
+    """Login-Time / NAS-IP-Address check items, or none when the policy is off."""
+    if policy is None or not policy.enabled:
+        return []
+    return [(item.name, item.op, item.value) for item in render_check_items(policy.conditions)]
+
+
 def _delete_endpoint_rows(db: Session, usernames: list[str]) -> None:
     for username in usernames:
         db.execute(
-            text("DELETE FROM radcheck WHERE username = :u AND attribute = 'Auth-Type'"),
+            text(
+                "DELETE FROM radcheck WHERE username = :u AND attribute IN "
+                "('Auth-Type', 'Login-Time', 'NAS-IP-Address')"
+            ),
             {"u": username},
         )
         db.execute(text("DELETE FROM radreply WHERE username = :u"), {"u": username})
@@ -151,6 +162,7 @@ def sync_endpoint_to_radius(db: Session, endpoint: Endpoint) -> list[str]:
         db.get(AuthzPolicy, endpoint.authz_policy_id) if endpoint.authz_policy_id else None
     )
     reply_rows = _policy_reply_rows(policy)
+    check_rows = _policy_check_rows(policy)
     for username in usernames:
         # MAB has no secret: a known MAC is accepted regardless of User-Password.
         db.execute(
@@ -160,6 +172,14 @@ def sync_endpoint_to_radius(db: Session, endpoint: Endpoint) -> list[str]:
             ),
             {"u": username},
         )
+        for name, op, value in check_rows:
+            db.execute(
+                text(
+                    "INSERT INTO radcheck (username, attribute, op, value) "
+                    "VALUES (:u, :a, :o, :v)"
+                ),
+                {"u": username, "a": name, "o": op, "v": value},
+            )
         for name, op, value in reply_rows:
             db.execute(
                 text(
@@ -170,10 +190,11 @@ def sync_endpoint_to_radius(db: Session, endpoint: Endpoint) -> list[str]:
             )
     db.commit()
     logger.info(
-        "Synced FreeRADIUS MAB rows for endpoint id=%s (%s usernames, %s reply attributes)",
+        "Synced FreeRADIUS MAB rows for endpoint id=%s (%s usernames, %s reply attributes, %s checks)",
         endpoint.id,
         len(usernames),
         len(reply_rows),
+        len(check_rows),
     )
     return usernames
 
@@ -210,10 +231,25 @@ def sync_authz_policy_groups(db: Session, lab_id: UUID | None = None) -> int:
         if not group:
             continue
         db.execute(text("DELETE FROM radgroupreply WHERE groupname = :g"), {"g": group})
+        db.execute(
+            text(
+                "DELETE FROM radgroupcheck WHERE groupname = :g AND attribute IN "
+                "('Login-Time', 'NAS-IP-Address')"
+            ),
+            {"g": group},
+        )
         for name, op, value in _policy_reply_rows(policy):
             db.execute(
                 text(
                     "INSERT INTO radgroupreply (groupname, attribute, op, value) "
+                    "VALUES (:g, :a, :o, :v)"
+                ),
+                {"g": group, "a": name, "o": op, "v": value},
+            )
+        for name, op, value in _policy_check_rows(policy):
+            db.execute(
+                text(
+                    "INSERT INTO radgroupcheck (groupname, attribute, op, value) "
                     "VALUES (:g, :a, :o, :v)"
                 ),
                 {"g": group, "a": name, "o": op, "v": value},
@@ -230,8 +266,15 @@ def delete_group_reply(db: Session, group_name: str) -> None:
     if not group:
         return
     db.execute(text("DELETE FROM radgroupreply WHERE groupname = :g"), {"g": group})
+    db.execute(
+        text(
+            "DELETE FROM radgroupcheck WHERE groupname = :g AND attribute IN "
+            "('Login-Time', 'NAS-IP-Address')"
+        ),
+        {"g": group},
+    )
     db.commit()
-    logger.info("Deleted radgroupreply rows for group=%s", group)
+    logger.info("Deleted radgroupreply/radgroupcheck rows for group=%s", group)
 
 
 def sync_all_users(db: Session, lab_id: UUID | None = None) -> int:
