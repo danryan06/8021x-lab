@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import zipfile
-from datetime import UTC, datetime
+from datetime import datetime
 from io import BytesIO
 from uuid import UUID
 
@@ -25,6 +25,7 @@ from app.models.entities import (
     CertStatus,
     CertType,
 )
+from app.services.certificates import effective_cert_status, sweep_expired_certificates
 from app.validation import IDENTITY_PATTERN
 
 router = APIRouter(prefix="/ca", tags=["certificate-authority"])
@@ -188,6 +189,7 @@ def list_certificates(
         .order_by(CertificateAuthority.created_at.desc())
         .limit(1)
     )
+    sweep_expired_certificates(db, lab_id=lab_id)
     rows = list(
         db.scalars(
             select(Certificate)
@@ -346,14 +348,7 @@ def _identity_from_subject(subject: str) -> str | None:
 
 
 def _to_certificate_read(row: Certificate) -> CertificateRead:
-    # Compute the live status: an active-in-DB cert past not_after reads as expired.
-    status = row.status
-    if status == CertStatus.active and row.not_after is not None:
-        not_after = row.not_after
-        if not_after.tzinfo is None:
-            not_after = not_after.replace(tzinfo=UTC)
-        if not_after < datetime.now(UTC):
-            status = CertStatus.expired
+    status = effective_cert_status(row.status, row.not_after)
 
     identity = _identity_from_subject(row.subject)
     download_bundle = download_p12 = None

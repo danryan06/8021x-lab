@@ -35,7 +35,11 @@
 - Revocation + CRL generation via a per-lab openssl CA database (done); FreeRADIUS
   CRL enforcement is opt-in via `FREERADIUS_ENFORCE_CRL`
 - TLS/PEAP failure explanations (unknown CA, expired, revoked, bad password) (done)
-- Remaining: step-ca adapter beyond stub, intermediate CAs, automatic expiry sweeps
+- Automatic expiry sweep: active certificates whose `not_after` has passed are
+  marked `expired` on inventory list and at API startup (done). Display already
+  treated them as expired; the sweep persists that so counts and later checks
+  match the UI
+- Remaining: step-ca adapter beyond stub, intermediate CAs
 
 > **Note:** Basic lab CA already shipped in Phase 1.5 (Wizard + Auth Test: ensure root, issue client cert, PEM/P12 download, FreeRADIUS trust). Phase 2 adds the inventory, real revocation/CRL, and failure explanations.
 

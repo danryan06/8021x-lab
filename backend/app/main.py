@@ -27,6 +27,7 @@ from app.integrations.freeradius.sql_sync import (
     sync_authz_policy_groups,
 )
 from app.integrations.freeradius.sync import bootstrap_radius_runtime
+from app.services.certificates import sweep_expired_certificates
 from app.workers.auth_log_ingestion import run_ingestion_task
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,9 @@ async def lifespan(app: FastAPI):
             sync_all_endpoints(db)
             sync_authz_policy_groups(db)
             bootstrap_radius_runtime(db)
+            expired = sweep_expired_certificates(db)
+            if expired:
+                logger.info("Marked %s certificate(s) expired", expired)
         logger.info("FreeRADIUS control-plane sync bootstrap complete")
     except Exception:
         logger.exception("FreeRADIUS bootstrap sync deferred (DB/schema may not be ready yet)")

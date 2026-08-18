@@ -200,6 +200,9 @@ Adapters:
 Issuance signs CSRs with `openssl ca` (not `x509 -req`) so each cert is recorded in the CA database. `revoke()` runs `openssl ca -revoke` and regenerates the CRL with `openssl ca -gencrl`. The CRL is published into `trusted/crl-bundle.pem`; FreeRADIUS only enforces it (adds `check_crl = yes` and loads the CRL alongside the CA certs) when `FREERADIUS_ENFORCE_CRL=yes`, because enabling CRL checking requires a current CRL for every trusted lab CA.
 
 PEAP uses FreeRADIUS lab EAP server certificates generated in the FreeRADIUS image (`certs/bootstrap`), exported to the shared volume for UI `eapol_test`. Lab openssl CAs are published into `trusted/ca-bundle.pem` for EAP-TLS client trust. The Certificates page surfaces the inventory (status, expiry, download, revoke).
+Active certificates whose `not_after` has passed are marked `expired` when the
+inventory is listed and once at API startup, so stored status matches what the
+UI already showed by comparing dates.
 
 ## Out of scope (for now)
 
