@@ -75,7 +75,7 @@ EOF
 
 ln -sfn ../mods-available/sql "${FR_DIR}/mods-enabled/sql"
 
-# Wait for FreeRADIUS SQL schema (applied by backend Alembic migrate).
+# Wait for FreeRADIUS SQL schema (backend applies it on container start).
 echo "Waiting for PostgreSQL FreeRADIUS tables at ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
 for i in $(seq 1 60); do
 	if PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \

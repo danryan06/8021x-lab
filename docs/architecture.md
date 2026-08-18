@@ -49,7 +49,7 @@ Control-plane tables remain authoritative:
 | `endpoints` | `radcheck` (`Auth-Type := Accept`) + `radreply` (its policy) | endpoint create / update / delete, policy edit |
 | `authz_policies` | `radreply` (via endpoints) / `radgroupreply` (via `group_name`) | policy create / update / delete |
 
-Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL tables (`radcheck`, `radreply`, `nas`, `radacct`, …) in the same database as the app. FreeRADIUS `rlm_sql` uses dialect `postgresql` against the Compose `db` service. Users authenticate from `radcheck`. NAS rows are mirrored into `nas` for inspection, but `read_clients = no` so FreeRADIUS loads clients only from the rendered file (avoids duplicate-IP conflicts).
+Alembic migration `20260801_0002` installs the stock FreeRADIUS PostgreSQL tables (`radcheck`, `radreply`, `nas`, `radacct`, …) in the same database as the app. The backend container applies `alembic upgrade head` (and seeds the Default Lab) before the API listens, so a fresh install never runs Alembic as an operator step. FreeRADIUS `rlm_sql` uses dialect `postgresql` against the Compose `db` service and waits for `radcheck` on startup. Users authenticate from `radcheck`. NAS rows are mirrored into `nas` for inspection, but `read_clients = no` so FreeRADIUS loads clients only from the rendered file (avoids duplicate-IP conflicts).
 
 ### Client apply mechanism
 

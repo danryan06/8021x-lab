@@ -9,7 +9,7 @@
 #   3. Adds your user to the docker group (fully active after your next login)
 #   4. Clones the repo to ~/8021x-lab, or updates an existing install
 #   5. Creates .env with a random SECRET_KEY on first install
-#   6. Runs scripts/bootstrap.sh (build images, start services, migrate, seed)
+#   6. Runs scripts/bootstrap.sh (build images, start services; schema + seed run on backend start)
 #
 # Options (environment variables):
 #   DOT1X_LAB_DIR=/path      install directory   (default: $HOME/8021x-lab)
@@ -136,7 +136,7 @@ else
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET}|" .env
 fi
 
-# --- build, start, migrate, seed ---------------------------------------------------
+# --- build, start (schema + seed happen inside the backend container) -------------
 # bootstrap.sh needs to talk to Docker. If this session doesn't have the docker
 # group yet (fresh usermod above), `sg docker` activates it for just this command
 # so no reboot is needed mid-install.

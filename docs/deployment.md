@@ -11,10 +11,13 @@
 git clone https://github.com/danryan06/8021x-lab.git && cd 8021x-lab
 cp .env.example .env
 # Edit secrets before any non-lab use
-docker compose up -d
-docker compose exec backend alembic upgrade head
-docker compose exec backend python -m app.seed   # creates the Default Lab the UI expects
+docker compose up -d --build
 ```
+
+A fresh Postgres volume is empty. The backend container applies the schema and
+creates the Default Lab **before the API listens**, so operators do not run
+Alembic. The one-line installer (`scripts/install.sh`) is the supported
+bring-up: it installs Docker if needed, clones the repo, and runs that stack.
 
 Published ports (default):
 
@@ -54,16 +57,22 @@ The Compose stack runs on any 64-bit Linux host, including a Raspberry Pi 4/5 on
 Docker Desktop) preserves the RADIUS source IP, so it's the better choice for
 testing real switches/APs.
 
-## Future appliance targets
+## Appliance path
 
-Prebuilt, Docker-free appliance packaging is **not implemented yet**:
+The supported **single installer** on 64-bit Linux is
+[`scripts/install.sh`](../scripts/install.sh) — see the
+[installation guide](installation.md). It installs Docker if needed, clones the
+repo, and starts Compose. Schema updates apply whenever the backend container
+starts.
+
+Prebuilt, Docker-free images are **not implemented yet**:
 
 - Ubuntu Server LTS VM / OVA
 - Proxmox VM template
 - Raspberry Pi image (prebuilt)
-- Bare metal Linux installer
 
-Design intent: same Compose stack under the hood; appliance UX should not require Docker knowledge.
+Design intent: same Compose stack under the hood; a later appliance UX should not
+require Docker knowledge.
 
 ## EAP-TLS CRL enforcement
 

@@ -13,7 +13,7 @@ ps:
 	docker compose ps
 
 migrate:
-	docker compose exec backend alembic upgrade head
+	docker compose exec backend python -m app.runtime_setup
 
 seed:
 	docker compose exec backend python -m app.seed
