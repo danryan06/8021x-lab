@@ -53,12 +53,12 @@ and the [usage guide](docs/usage.md) (step-by-step how-to).
 |---------|-----------------------------------|
 | Visual lab control plane | FreeRADIUS replacement |
 | Local users + PEAP/MSCHAPv2 | Active Directory / LDAP |
-| EAP-TLS with a lab CA: issue, download, revoke (CRL) | Enterprise PKI (intermediate CAs, HSM, ACME) |
+| EAP-TLS with a lab CA: issue, download, revoke, optional intermediate | Enterprise PKI (HSM, ACME, off-device root) |
 | Certificate inventory + revocation | Cloud identity providers |
 | RADIUS client sync into FreeRADIUS | Production-hardened NAC |
 | Auth events with plain-language failure explanations | Vendor switch/WLC generators |
-| MAB endpoints, authorization policies, CoA/Disconnect | Packet capture / classroom mode |
-| Guided PEAP, EAP-TLS, and MAB wizards | Appliance image / OVA (Phase 5) |
+| MAB, authorization policies, CoA/Disconnect, guest analogue | Packet capture / classroom packs |
+| Guided PEAP, EAP-TLS, MAB, and wireless wizards | OVA / Docker-free appliance image |
 
 ## Stack
 
@@ -68,8 +68,8 @@ and the [usage guide](docs/usage.md) (step-by-step how-to).
 | Frontend | React, TypeScript, Vite, Tailwind |
 | Database | PostgreSQL 16 |
 | RADIUS | FreeRADIUS |
-| CA | Pluggable (`openssl` now, `step-ca` next) |
-| Deploy | Docker Compose |
+| CA | Pluggable (`openssl` default; optional `step-ca`) |
+| Deploy | Docker Compose + Linux one-line installer |
 
 ## Repository layout
 
