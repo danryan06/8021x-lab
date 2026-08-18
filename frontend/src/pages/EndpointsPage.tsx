@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   apiFetch,
   type AuthzPolicy,
@@ -24,12 +24,13 @@ type GenerateResponse = {
 
 export function EndpointsPage() {
   const { isAdvanced } = useMode();
+  const [searchParams] = useSearchParams();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labId, setLabId] = useState("");
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [policies, setPolicies] = useState<AuthzPolicy[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<string[]>([]);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(() => searchParams.get("q") || "");
 
   // Create form
   const [mac, setMac] = useState("");

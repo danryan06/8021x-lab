@@ -24,6 +24,7 @@ class TestParseLinelogLine:
         assert parsed is not None
         assert parsed.result is AuthResult.failure
         assert parsed.failure_reason == "mschap: FAILED"
+        assert parsed.raw == line
 
     def test_reject_line_without_reason_gets_default(self) -> None:
         parsed = parse_linelog_line("DOT1X|1754226000|bob|10.0.0.10|PEAP|Access-Reject|")

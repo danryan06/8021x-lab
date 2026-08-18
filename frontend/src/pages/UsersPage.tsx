@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   apiDownload,
   apiFetch,
@@ -40,10 +41,11 @@ const USERNAME_STYLES = [
 
 export function UsersPage() {
   const { isAdvanced } = useMode();
+  const [searchParams] = useSearchParams();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [labId, setLabId] = useState("");
   const [users, setUsers] = useState<RadiusUser[]>([]);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(() => searchParams.get("q") || "");
 
   // Create form
   const [username, setUsername] = useState("");
@@ -71,6 +73,15 @@ export function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
+
+  // Inline edit — username stays locked (it is the RADIUS User-Name / radcheck key).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
+  const [editGroupsText, setEditGroupsText] = useState("");
+  const [editStatus, setEditStatus] = useState("active");
+  const [editPassword, setEditPassword] = useState("");
 
   async function refresh(selectedLab: string) {
     const data = await apiFetch<RadiusUser[]>(
@@ -280,13 +291,88 @@ export function UsersPage() {
     setIncludeGroups(on);
   }
 
+  function startEdit(user: RadiusUser) {
+    setEditingId(user.id);
+    setEditFirstName(user.first_name || "");
+    setEditLastName(user.last_name || "");
+    setEditDepartment(user.department || "");
+    setEditGroupsText((user.groups || []).join(", "));
+    setEditStatus(user.status);
+    setEditPassword("");
+    setStatus(null);
+    setError(null);
+  }
+
+  async function saveEdit(user: RadiusUser) {
+    setError(null);
+    setStatus(null);
+    try {
+      const body: Record<string, unknown> = {
+        first_name: editFirstName,
+        last_name: editLastName,
+        department: editDepartment,
+        groups: parseGroups(editGroupsText),
+        status: editStatus,
+      };
+      if (editPassword) body.password = editPassword;
+      await apiFetch(`/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setEditingId(null);
+      setEditPassword("");
+      setStatus(
+        editPassword
+          ? `${user.username} updated (password reset) and re-synced to FreeRADIUS.`
+          : `${user.username} updated and re-synced to FreeRADIUS.`,
+      );
+      if (labId) await refresh(labId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    }
+  }
+
+  async function toggleStatus(user: RadiusUser) {
+    setError(null);
+    setStatus(null);
+    const enable = user.status !== "active";
+    try {
+      await apiFetch(`/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: enable ? "active" : "disabled" }),
+      });
+      setStatus(
+        enable
+          ? `${user.username} enabled — NT-Password restored in FreeRADIUS.`
+          : `${user.username} disabled — NT-Password removed from FreeRADIUS, so PEAP now rejects.`,
+      );
+      if (labId) await refresh(labId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    }
+  }
+
+  async function onDelete(user: RadiusUser) {
+    setError(null);
+    setStatus(null);
+    try {
+      await apiFetch(`/users/${user.id}`, { method: "DELETE" });
+      if (editingId === user.id) setEditingId(null);
+      setStatus(`${user.username} deleted and removed from FreeRADIUS.`);
+      if (labId) await refresh(labId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
   return (
     <div className="page-enter space-y-8">
       <section>
         <h1 className="font-display text-3xl font-bold">Users</h1>
         <p className="mt-1 text-ink/70">
           Local RADIUS identities for PEAP labs. Create, generate, or import — each syncs
-          NT-Password into FreeRADIUS SQL immediately.
+          NT-Password into FreeRADIUS SQL immediately. Edit a row to reset a password, change
+          groups, or disable the user.
         </p>
       </section>
 
@@ -301,6 +387,7 @@ export function UsersPage() {
             value={labId}
             onChange={(e) => {
               setLabId(e.target.value);
+              setEditingId(null);
               refresh(e.target.value).catch((err: Error) => setError(err.message));
             }}
           >
@@ -650,6 +737,9 @@ export function UsersPage() {
         <p className="border-b border-ink/10 px-4 py-2 text-xs text-ink/55">
           Passwords aren't shown here — only hashes are stored. Capture generated passwords from
           the panel above when you create users, or reset a password by editing the user.
+          Username is the RADIUS User-Name and cannot be renamed; delete and recreate to change
+          it. Disabling a user removes their NT-Password from FreeRADIUS, so the next PEAP
+          attempt rejects.
         </p>
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-ink/10 bg-mist/40">
@@ -661,25 +751,138 @@ export function UsersPage() {
               <th className="px-4 py-3">Groups</th>
               <th className="px-4 py-3">Status</th>
               {isAdvanced && <th className="px-4 py-3">ID</th>}
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.map((user) => (
-              <tr key={user.id} className="border-b border-ink/5">
-                <td className="px-4 py-3 font-medium">{user.username}</td>
-                <td className="px-4 py-3">{user.first_name || "—"}</td>
-                <td className="px-4 py-3">{user.last_name || "—"}</td>
-                <td className="px-4 py-3">{user.department || "—"}</td>
-                <td className="px-4 py-3">{(user.groups || []).join(", ") || "—"}</td>
-                <td className="px-4 py-3">{user.status}</td>
-                {isAdvanced && (
-                  <td className="px-4 py-3 font-mono text-xs text-ink/50">{user.id}</td>
-                )}
-              </tr>
-            ))}
+            {filteredUsers.map((user) =>
+              editingId === user.id ? (
+                <tr key={user.id} className="border-b border-ink/5 bg-mist/30 align-top">
+                  <td className="px-4 py-3">
+                    <p className="font-medium">{user.username}</p>
+                    <label className="mt-2 block text-xs text-ink/60">
+                      New password
+                      <input
+                        type="text"
+                        className="ui-input mt-1 font-mono"
+                        value={editPassword}
+                        onChange={(e) => setEditPassword(e.target.value)}
+                        placeholder="leave blank to keep"
+                        autoComplete="new-password"
+                      />
+                    </label>
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      className="ui-input"
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      className="ui-input"
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      className="ui-input"
+                      value={editDepartment}
+                      onChange={(e) => setEditDepartment(e.target.value)}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      className="ui-input"
+                      value={editGroupsText}
+                      onChange={(e) => setEditGroupsText(e.target.value)}
+                      placeholder="students, staff"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      className="ui-input"
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                    >
+                      <option value="active">active</option>
+                      <option value="disabled">disabled</option>
+                      {user.status === "expired" && <option value="expired">expired</option>}
+                    </select>
+                  </td>
+                  {isAdvanced && (
+                    <td className="px-4 py-3 font-mono text-xs text-ink/50">{user.id}</td>
+                  )}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="ui-btn-primary px-2 py-1 text-xs"
+                        onClick={() => saveEdit(user)}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-btn-ghost px-2 py-1 text-xs"
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditPassword("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={user.id} className="border-b border-ink/5">
+                  <td className="px-4 py-3 font-medium">{user.username}</td>
+                  <td className="px-4 py-3">{user.first_name || "—"}</td>
+                  <td className="px-4 py-3">{user.last_name || "—"}</td>
+                  <td className="px-4 py-3">{user.department || "—"}</td>
+                  <td className="px-4 py-3">{(user.groups || []).join(", ") || "—"}</td>
+                  <td
+                    className={`px-4 py-3 ${user.status === "active" ? "" : "text-fail"}`}
+                  >
+                    {user.status}
+                  </td>
+                  {isAdvanced && (
+                    <td className="px-4 py-3 font-mono text-xs text-ink/50">{user.id}</td>
+                  )}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="ui-btn-ghost px-2 py-1 text-xs"
+                        onClick={() => startEdit(user)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-btn-ghost px-2 py-1 text-xs"
+                        onClick={() => toggleStatus(user)}
+                      >
+                        {user.status === "active" ? "Disable" : "Enable"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-btn-ghost px-2 py-1 text-xs text-fail"
+                        onClick={() => onDelete(user)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ),
+            )}
             {filteredUsers.length === 0 && (
               <tr>
-                <td className="px-4 py-6 text-ink/50" colSpan={isAdvanced ? 7 : 6}>
+                <td className="px-4 py-6 text-ink/50" colSpan={isAdvanced ? 8 : 7}>
                   No users yet — create, generate, or import to get started.
                 </td>
               </tr>

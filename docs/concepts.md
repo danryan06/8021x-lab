@@ -258,8 +258,10 @@ loop that makes the lab useful for learning: you make a change, run a test, and
 see exactly whether it was accepted or rejected — and if rejected, a
 plain-language explanation (untrusted CA, expired/revoked certificate, wrong
 password, unknown user, unknown MAC, disabled endpoint) plus a hint on how to fix
-it. Accepted events also show the reply attributes that went back to the NAS, so
-authorization is visible and not just assumed.
+it. Click an event to expand it: Simple mode shows the outcome, a fix hint, and
+a link to the matching user or endpoint; Advanced mode adds the raw linelog and
+RADIUS attribute names. Accepted events also show the reply attributes that went
+back to the NAS, so authorization is visible and not just assumed.
 
 ## Simple vs. Advanced mode
 
