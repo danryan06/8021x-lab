@@ -161,7 +161,9 @@ class TestSinkCodec:
         assert parsed.code == CODE_DISCONNECT_ACK
         assert parsed.identifier == 7
         assert verify_response_authenticator(reply, parse_packet(request).authenticator, SECRET)
-        assert verify_message_authenticator(reply, SECRET)
+        assert verify_message_authenticator(
+            reply, SECRET, hmac_authenticator=parse_packet(request).authenticator
+        )
         assert "Disconnect-Request accepted" in (parsed.text(ATTR_REPLY_MESSAGE) or "")
 
     def test_acks_coa_identified_by_calling_station(self) -> None:

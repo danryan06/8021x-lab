@@ -170,18 +170,44 @@ def _with_zeroed_message_authenticator(packet: bytes) -> bytes:
     return bytes(out)
 
 
-def message_authenticator(packet: bytes, secret: bytes) -> bytes:
-    return hmac.new(secret, _with_zeroed_message_authenticator(packet), hashlib.md5).digest()
+def message_authenticator(
+    packet: bytes,
+    secret: bytes,
+    *,
+    hmac_authenticator: bytes | None = None,
+) -> bytes:
+    """HMAC-MD5 of the packet with Message-Authenticator zeroed (RFC 3579).
+
+    For requests, the packet's Authenticator field is already the Request
+    Authenticator. For responses, HMAC is computed with the *Request*
+    Authenticator in that field — not the Response Authenticator — which is
+    why radclient reports "invalid Message-Authenticator" if we HMAC the
+    finished response packet as-is.
+    """
+    body = _with_zeroed_message_authenticator(packet)
+    if hmac_authenticator is not None:
+        if len(hmac_authenticator) != 16:
+            raise ValueError("HMAC Authenticator must be 16 octets")
+        body = body[:4] + hmac_authenticator + body[20:]
+    return hmac.new(secret, body, hashlib.md5).digest()
 
 
-def verify_message_authenticator(packet: bytes, secret: bytes) -> bool:
+def verify_message_authenticator(
+    packet: bytes,
+    secret: bytes,
+    *,
+    hmac_authenticator: bytes | None = None,
+) -> bool:
     parsed = parse_packet(packet)
     if parsed is None:
         return False
     attribute = parsed.first(ATTR_MESSAGE_AUTHENTICATOR)
     if attribute is None or len(attribute.value) != 16:
         return False
-    return hmac.compare_digest(attribute.value, message_authenticator(packet, secret))
+    expected = message_authenticator(
+        packet, secret, hmac_authenticator=hmac_authenticator
+    )
+    return hmac.compare_digest(attribute.value, expected)
 
 
 def response_authenticator(
@@ -235,7 +261,9 @@ def encode_response(
     resp_auth = response_authenticator(code, identifier, request_authenticator, attrs, secret)
     packet = header + resp_auth + attrs
     if with_message_authenticator:
-        packet = packet[:-16] + message_authenticator(packet, secret)
+        packet = packet[:-16] + message_authenticator(
+            packet, secret, hmac_authenticator=request_authenticator
+        )
     return packet
 
 
