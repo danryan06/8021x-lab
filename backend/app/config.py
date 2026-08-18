@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     radius_host_ip_file: str = "/var/lib/dot1x-lab/freeradius/host-ip"
     ca_data_dir: str = "/var/lib/dot1x-lab/ca"
     ca_adapter: str = "openssl"
+    # Optional step-ca (https://smallstep.com). Used when CA_ADAPTER=step-ca.
+    step_ca_url: str = ""
+    step_ca_token: str = ""
+    step_ca_verify_tls: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:

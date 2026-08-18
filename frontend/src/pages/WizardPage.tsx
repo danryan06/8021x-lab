@@ -59,13 +59,27 @@ const WIZARD_USER_GROUP = "lab";
 // limit, but saying so while typing beats a rejected request.
 const SSID_MAX_BYTES = 32;
 
+function includesWireless(medium: Medium): boolean {
+  return medium === "wireless" || medium === "both";
+}
+
+function includesWired(medium: Medium): boolean {
+  return medium === "wired" || medium === "both";
+}
+
+const MEDIUM_LABELS: Record<Medium, string> = {
+  wired: "Wired (switch ports)",
+  wireless: "Wireless (SSID / AP / WLC)",
+  both: "Wired and wireless",
+};
+
 /**
- * The steps for one run. Wireless adds an SSID up front and, for PEAP, a VLAN
- * for the people joining it — the two things a wireless lab needs that a wired
- * one does not.
+ * The steps for one run. Wireless (and "both") add an SSID up front and, for
+ * PEAP, a VLAN for the people joining it — the two things a wireless lab needs
+ * that a wired-only one does not.
  */
 function buildSteps(method: AuthMethod, medium: Medium): Step[] {
-  const wireless = medium === "wireless";
+  const wireless = includesWireless(medium);
   const steps: Step[] = [
     { id: "medium", label: "Select medium" },
     { id: "method", label: "Select authentication type" },
@@ -90,7 +104,12 @@ function buildSteps(method: AuthMethod, medium: Medium): Step[] {
   }
   steps.push({
     id: "client",
-    label: wireless ? "Create RADIUS client (WLC/AP)" : "Create RADIUS client",
+    label:
+      medium === "wireless"
+        ? "Create RADIUS client (WLC/AP)"
+        : medium === "both"
+          ? "Create RADIUS client (switch and/or WLC)"
+          : "Create RADIUS client",
   });
   steps.push({
     id: "test",
@@ -101,7 +120,15 @@ function buildSteps(method: AuthMethod, medium: Medium): Step[] {
           ? "Run MAB test"
           : "Run authentication test",
   });
-  steps.push({ id: "done", label: wireless ? "Configure the SSID" : "View events" });
+  steps.push({
+    id: "done",
+    label:
+      medium === "both"
+        ? "Configure switch and SSID"
+        : wireless
+          ? "Configure the SSID"
+          : "View events",
+  });
   return steps;
 }
 
@@ -112,13 +139,13 @@ type StepHelp = { what: string; configuring: string; next: string };
 function stepHelp(id: StepId, method: AuthMethod, medium: Medium): StepHelp {
   const peap = method === "peap";
   const mab = method === "mab";
-  const wireless = medium === "wireless";
+  const wireless = includesWireless(medium);
   switch (id) {
     case "medium":
       return {
         what: "Records whether this lab targets wired switches, wireless APs/controllers, or both.",
         configuring:
-          "Which steps you'll see and the device-type default (“wlc” vs “switch”). Wireless adds an SSID step and ends with a controller checklist; it does not change how authentication works.",
+          "Which steps you'll see and the device-type default (“wlc” vs “switch”). Wireless and “both” add an SSID step and end with a controller checklist; wired-only does not. Authentication itself is the same.",
         next: "Choose the authentication type.",
       };
     case "ssid":
@@ -290,7 +317,8 @@ export function WizardPage() {
   const useExistingLab = labChoice === "existing" && labs.length > 0;
   const newLabName = labName.trim();
   const selectedLab = labs.find((lab) => lab.id === labId);
-  const wireless = medium === "wireless";
+  const wireless = includesWireless(medium);
+  const wired = includesWired(medium);
   const trimmedSsid = ssid.trim();
   const ssidBytes = new TextEncoder().encode(trimmedSsid).length;
 
@@ -320,19 +348,19 @@ export function WizardPage() {
   }, [method, steps.length]);
 
   useEffect(() => {
-    // A wireless lab registers a controller, not a switch — say so by default,
-    // and give it its own address, since one address can hold one client.
-    const wirelessMedium = medium === "wireless";
+    // Wireless-only registers a controller; wired-only a switch. "Both" starts
+    // with the switch — add the WLC as a second client on RADIUS Clients.
+    const wirelessOnly = medium === "wireless";
     setClientName((current) =>
       current === "lab-switch" || current === "lab-wlc"
-        ? wirelessMedium
+        ? wirelessOnly
           ? "lab-wlc"
           : "lab-switch"
         : current,
     );
     setClientIp((current) =>
       current === "10.0.0.1" || current === "10.0.0.2"
-        ? wirelessMedium
+        ? wirelessOnly
           ? "10.0.0.2"
           : "10.0.0.1"
         : current,
@@ -773,14 +801,16 @@ export function WizardPage() {
       <PageHeader
         title="Create your first 802.1X lab"
         subtitle={
-          wireless
-            ? `Guided wireless path — ${METHOD_LABELS[method]} on a WPA2/3-Enterprise SSID, ` +
-              "ending with the settings to enter on your AP/WLC."
-            : method === "eap_tls"
-              ? "Guided EAP-TLS path — lab CA, client cert, RADIUS client, live test, then Events."
-              : method === "mab"
-                ? "Guided MAB path — authorization policy, endpoint MAC, RADIUS client, live test, then Events."
-                : "Guided PEAP path — lab, user, RADIUS client, live auth test, then Events."
+          medium === "both"
+            ? `Guided wired + wireless path — ${METHOD_LABELS[method]} for switch ports and a WPA2/3-Enterprise SSID.`
+            : wireless
+              ? `Guided wireless path — ${METHOD_LABELS[method]} on a WPA2/3-Enterprise SSID, ` +
+                "ending with the settings to enter on your AP/WLC."
+              : method === "eap_tls"
+                ? "Guided EAP-TLS path — lab CA, client cert, RADIUS client, live test, then Events."
+                : method === "mab"
+                  ? "Guided MAB path — authorization policy, endpoint MAC, RADIUS client, live test, then Events."
+                  : "Guided PEAP path — lab, user, RADIUS client, live auth test, then Events."
         }
       />
 
@@ -828,13 +858,15 @@ export function WizardPage() {
                     checked={medium === value}
                     onChange={() => setMedium(value)}
                   />
-                  {value}
+                  {MEDIUM_LABELS[value]}
                 </label>
               ))}
             </div>
             <p className="mt-3 text-sm text-ink/60">
-              Wireless adds an SSID step and ends with the settings to enter on your AP/WLC. The
-              lab is the RADIUS server for that SSID — it does not broadcast anything itself.
+              Wireless and “wired and wireless” add an SSID step and end with the settings to
+              enter on your AP/WLC. Wired-only (and the wired half of “both”) still gets the
+              switch-port checklist. The lab is the RADIUS server — it does not broadcast
+              anything itself.
             </p>
           </div>
         )}
@@ -1252,13 +1284,19 @@ export function WizardPage() {
         {current === "client" && (
           <div className="space-y-3">
             <h2 className="flex items-center gap-2 font-semibold">
-              {wireless ? "RADIUS client (your AP or WLC)" : "RADIUS client (for real NAS)"}
+              {medium === "wireless"
+                ? "RADIUS client (your AP or WLC)"
+                : medium === "both"
+                  ? "RADIUS client (switch and/or WLC)"
+                  : "RADIUS client (for real NAS)"}
               <StepTip id="client" method={method} medium={medium} label="Create RADIUS client" />
             </h2>
             <p className="text-sm text-ink/60">
-              {wireless
+              {medium === "wireless"
                 ? "First confirm the lab RADIUS target IP (what the controller points to). Then add the address the controller sends RADIUS from — on most WLCs that is the management interface, not each AP."
-                : "First confirm the lab RADIUS target IP (what the NAS points to). Then add this client as the NAS source IP FreeRADIUS will accept."}
+                : medium === "both"
+                  ? "Register the first NAS now (usually the switch). Add the WLC as a second RADIUS client afterwards — FreeRADIUS matches by source address, so each device needs its own row."
+                  : "First confirm the lab RADIUS target IP (what the NAS points to). Then add this client as the NAS source IP FreeRADIUS will accept."}
             </p>
             {labId && <RadiusTargetPanel labId={labId} compact />}
             <Field label="Name">
@@ -1268,7 +1306,7 @@ export function WizardPage() {
                 onChange={(e) => setClientName(e.target.value)}
               />
             </Field>
-            <Field label={wireless ? "AP / WLC source IP or CIDR" : "IP / CIDR"}>
+            <Field label={medium === "wireless" ? "AP / WLC source IP or CIDR" : "IP / CIDR"}>
               <input
                 className="ui-input"
                 value={clientIp}
@@ -1292,7 +1330,7 @@ export function WizardPage() {
             </div>
             <p className="text-sm text-ink/55">
               The test on the next step runs inside Compose and does not need this client — it is
-              for the real {wireless ? "AP/WLC" : "switch"} when you have one.
+              for the real {medium === "wireless" ? "AP/WLC" : medium === "both" ? "switch and AP/WLC" : "switch"} when you have one.
             </p>
           </div>
         )}
@@ -1384,9 +1422,11 @@ export function WizardPage() {
                 clientIp={createdClient?.ip_address || null}
               />
             )}
-            {!wireless && (
+            {wired && (
             <div className="border border-ink/10 bg-mist/40 p-4 text-sm">
-              <p className="font-medium">Take it to real hardware</p>
+              <p className="font-medium">
+                {medium === "both" ? "Take the wired side to real hardware" : "Take it to real hardware"}
+              </p>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink/75">
                 <li>
                   Confirm the <strong>RADIUS target</strong> IP + shared secret on the Dashboard —

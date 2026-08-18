@@ -13,6 +13,7 @@ from app.api import (
     endpoints,
     events,
     freeradius,
+    guest,
     health,
     labs,
     policies,
@@ -98,6 +99,7 @@ app.include_router(events.router, prefix="/api")
 app.include_router(ca.router, prefix="/api")
 app.include_router(auth_tests.router, prefix="/api")
 app.include_router(session_actions.router, prefix="/api")
+app.include_router(guest.router, prefix="/api")
 app.include_router(freeradius.router, prefix="/api")
 app.include_router(radius_target.router, prefix="/api")
 

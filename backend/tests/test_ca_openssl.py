@@ -85,3 +85,48 @@ def test_revoke_missing_cert_raises(adapter: OpenSslLocalCaAdapter) -> None:
     adapter.ensure_root(lab)
     with pytest.raises(FileNotFoundError):
         adapter.revoke(lab, "/nonexistent/cert.crt")
+
+
+def test_intermediate_signs_clients(adapter: OpenSslLocalCaAdapter) -> None:
+    lab = uuid4()
+    adapter.ensure_root(lab, "Test Root")
+    info = adapter.ensure_intermediate(lab, "Test Intermediate")
+    assert adapter.intermediate_cert_path(lab).exists()
+    assert "Test Intermediate" in info.subject
+    issued = adapter.issue_client_cert(lab, "carol", days=30)
+    assert "carol" in issued.subject
+    verify = subprocess.run(
+        [
+            "openssl",
+            "verify",
+            "-CAfile",
+            str(adapter.root_cert_path(lab)),
+            "-untrusted",
+            str(adapter.intermediate_cert_path(lab)),
+            str(adapter.client_cert_path(lab, "carol")),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert verify.returncode == 0, verify.stderr
+    issuer = subprocess.check_output(
+        [
+            "openssl",
+            "x509",
+            "-in",
+            str(adapter.client_cert_path(lab, "carol")),
+            "-noout",
+            "-issuer",
+        ],
+        text=True,
+    )
+    assert "Test Intermediate" in issuer
+
+
+def test_revoke_client_signed_by_intermediate(adapter: OpenSslLocalCaAdapter) -> None:
+    lab = uuid4()
+    adapter.ensure_intermediate(lab)
+    issued = adapter.issue_client_cert(lab, "dave")
+    adapter.revoke(lab, issued.storage_ref)
+    text = _crl_text(adapter.crl_path(lab))
+    assert issued.serial.lstrip("0").upper() in text.upper()

@@ -8,10 +8,13 @@ import {
   type FreeRadiusSyncResponse,
   type HealthResponse,
   type Lab,
+  type RadiusClient,
   type RadiusUser,
+  type WirelessProfile,
 } from "../api/client";
 import { useMode } from "../modes/ModeContext";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
+import { SECURITY_LABELS } from "../components/WirelessSummary";
 import {
   Button,
   PageHeader,
@@ -27,6 +30,14 @@ function statusColor(status: string): string {
   return "text-fail";
 }
 
+function wirelessProfileOf(lab: Lab): WirelessProfile | null {
+  const raw = lab.settings?.wireless_profile;
+  if (!raw || typeof raw !== "object") return null;
+  const ssid = (raw as { ssid?: unknown }).ssid;
+  if (typeof ssid !== "string" || !ssid.trim()) return null;
+  return raw as WirelessProfile;
+}
+
 export function DashboardPage() {
   const { isAdvanced } = useMode();
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -36,6 +47,7 @@ export function DashboardPage() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [policies, setPolicies] = useState<AuthzPolicy[]>([]);
   const [mabEvents, setMabEvents] = useState<AuthEvent[]>([]);
+  const [clients, setClients] = useState<RadiusClient[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -47,7 +59,7 @@ export function DashboardPage() {
     if (loadInFlight.current) return;
     loadInFlight.current = true;
     try {
-      const [h, l, events, u, e, p, mab] = await Promise.all([
+      const [h, l, events, u, e, p, mab, c] = await Promise.all([
         apiFetch<HealthResponse>("/health"),
         apiFetch<Lab[]>("/labs"),
         apiFetch<AuthEvent[]>("/events?limit=1"),
@@ -55,6 +67,7 @@ export function DashboardPage() {
         apiFetch<Endpoint[]>("/endpoints"),
         apiFetch<AuthzPolicy[]>("/authz-policies"),
         apiFetch<AuthEvent[]>("/events?method=mab&limit=5"),
+        apiFetch<RadiusClient[]>("/clients"),
       ]);
       setHealth(h);
       setLabs(l);
@@ -63,6 +76,7 @@ export function DashboardPage() {
       setEndpoints(e);
       setPolicies(p);
       setMabEvents(mab);
+      setClients(c);
       setError(null);
     } finally {
       loadInFlight.current = false;
@@ -97,6 +111,9 @@ export function DashboardPage() {
   }
 
   const enabledEndpoints = endpoints.filter((e) => e.enabled).length;
+  const wirelessLabs = labs
+    .map((lab) => ({ lab, profile: wirelessProfileOf(lab) }))
+    .filter((row): row is { lab: Lab; profile: WirelessProfile } => row.profile !== null);
 
   return (
     <div className="page-enter space-y-8">
@@ -109,6 +126,69 @@ export function DashboardPage() {
       {syncMsg && <StatusBanner tone="ok">{syncMsg}</StatusBanner>}
 
       <RadiusTargetPanel labId={labs[0]?.id} />
+
+      {wirelessLabs.length > 0 && (
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-xl font-semibold">Wireless SSIDs</h2>
+            <Link className="text-sm text-signal underline-offset-2 hover:underline" to="/wizard">
+              Guided wireless path
+            </Link>
+          </div>
+          <p className="mt-1 text-sm text-ink/60">
+            Stored on each lab from the wizard. The RADIUS clients listed are the APs/WLCs
+            (and switches) FreeRADIUS will accept for that lab — one row per source address.
+          </p>
+          <ul className="mt-4 space-y-4">
+            {wirelessLabs.map(({ lab, profile }) => {
+              const labClients = clients.filter((c) => c.lab_id === lab.id && c.enabled);
+              return (
+                <li key={lab.id} className="border-b border-ink/5 pb-4 last:border-0 last:pb-0">
+                  <p className="font-medium">
+                    <span className="font-mono">{profile.ssid}</span>
+                    <span className="ml-2 text-sm font-normal text-ink/60">{lab.name}</span>
+                  </p>
+                  <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div>
+                      <dt className="text-ink/50">Security</dt>
+                      <dd>{SECURITY_LABELS[profile.security] || profile.security}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink/50">VLAN</dt>
+                      <dd className="font-mono">
+                        {profile.vlan != null ? profile.vlan : "SSID default"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink/50">User group</dt>
+                      <dd className="font-mono">{profile.user_group || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink/50">RADIUS clients</dt>
+                      <dd>
+                        {labClients.length === 0 ? (
+                          <Link className="text-signal underline-offset-2 hover:underline" to="/clients">
+                            None yet — add the AP/WLC
+                          </Link>
+                        ) : (
+                          <ul className="space-y-0.5">
+                            {labClients.map((client) => (
+                              <li key={client.id} className="font-mono text-xs">
+                                {client.name} ({client.ip_address}
+                                {client.device_type ? ` · ${client.device_type}` : ""})
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </li>
+              );
+            })}
+          </ul>
+        </Panel>
+      )}
 
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {(health?.components || []).map((c) => (
@@ -301,6 +381,9 @@ export function DashboardPage() {
         </Link>
         <Link className="ui-btn-ghost" to="/clients">
           RADIUS clients
+        </Link>
+        <Link className="ui-btn-ghost" to="/guest">
+          Guest portal
         </Link>
         <Button variant="ghost" disabled={syncing} onClick={syncAll}>
           {syncing ? "Syncing…" : "Sync to FreeRADIUS"}

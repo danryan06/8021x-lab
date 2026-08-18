@@ -266,6 +266,7 @@ export type CertificateInventory = {
   authority: CertificateAuthorityInfo | null;
   crl_available: boolean;
   crl_enforced: boolean;
+  has_intermediate: boolean;
   certificates: Certificate[];
 };
 

@@ -72,6 +72,27 @@ export function CertificatesPage() {
     }
   }
 
+  async function ensureIntermediate() {
+    if (!labId) return;
+    setBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      await apiFetch("/ca/ensure-intermediate", {
+        method: "POST",
+        body: JSON.stringify({ lab_id: labId }),
+      });
+      setStatus(
+        "Intermediate CA is ready. New client certificates are signed by it; FreeRADIUS still trusts the root.",
+      );
+      await loadInventory(labId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create intermediate CA");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function issueCert(e?: FormEvent) {
     e?.preventDefault();
     if (!labId || !identity.trim()) return;
@@ -178,6 +199,16 @@ export function CertificatesPage() {
               >
                 Download root PEM
               </Button>
+            )}
+            {inventory?.authority && !inventory.has_intermediate && (
+              <Button variant="ghost" disabled={busy} onClick={ensureIntermediate}>
+                {busy ? "Working…" : "Create intermediate CA"}
+              </Button>
+            )}
+            {inventory?.authority && inventory.has_intermediate && (
+              <span className="self-center text-xs text-ink/55">
+                Clients are signed by the intermediate CA
+              </span>
             )}
           </div>
         </div>

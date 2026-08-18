@@ -33,6 +33,11 @@ def publish_lab_ca(lab_id: UUID, common_name: str = "802.1X Lab Root CA") -> boo
         raise FileNotFoundError(f"Lab CA cert missing at {root_path}")
 
     lab_ca_pem = root_path.read_text(encoding="utf-8")
+    intermediate = getattr(adapter, "intermediate_cert_path", None)
+    if callable(intermediate):
+        inter_path = Path(str(intermediate(lab_id)))
+        if inter_path.exists():
+            lab_ca_pem = inter_path.read_text(encoding="utf-8") + lab_ca_pem
     out_lab = trusted_dir() / f"lab-{lab_id}.pem"
     out_lab.write_text(lab_ca_pem, encoding="utf-8")
 
