@@ -87,7 +87,8 @@ Or manually with host `eapol_test` against `127.0.0.1:1812` / `testing123` (see 
 | Command | Purpose |
 |---------|---------|
 | `make up` | Start all Compose services |
-| `make down` | Stop services |
+| `make down` | Stop services (keeps data) |
+| `make reset` | Stop services and delete lab data volumes |
 | `make logs` | Tail logs |
 | `make migrate` | Re-apply schema + Default Lab seed (already runs on backend start) |
 | `make seed` | Seed a default lab (no-op if it exists) |

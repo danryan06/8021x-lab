@@ -1,10 +1,13 @@
-.PHONY: up down logs migrate seed backend-shell frontend-shell ps bootstrap test-peap lint test
+.PHONY: up down reset logs migrate seed backend-shell frontend-shell ps bootstrap test-peap lint test
 
 up:
 	docker compose up -d --build
 
 down:
 	docker compose down
+
+reset:
+	./scripts/reset-lab.sh
 
 logs:
 	docker compose logs -f --tail=200

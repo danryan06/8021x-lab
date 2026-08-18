@@ -17,6 +17,8 @@ curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/in
 
 That is the whole bring-up on a fresh 64-bit Linux machine: Docker, the code,
 database schema, and the UI. You do not run a separate migrate command.
+Re-running the installer wipes previous lab data (events, RADIUS logs, certs)
+and starts clean; it keeps your `.env`.
 
 Already have Docker + Git and prefer the manual way:
 

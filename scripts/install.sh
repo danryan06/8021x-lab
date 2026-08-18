@@ -3,18 +3,20 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/install.sh | bash
 #
-# What it does (every step is idempotent — safe to re-run, and re-running updates):
+# What it does (safe to re-run; a re-run is a *clean* reinstall):
 #   1. Checks the platform (Linux, 64-bit; warns off 32-bit ARM)
 #   2. Installs git, make, curl and Docker Engine + Compose if missing
 #   3. Adds your user to the docker group (fully active after your next login)
-#   4. Clones the repo to ~/8021x-lab, or updates an existing install
-#   5. Creates .env with a random SECRET_KEY on first install
-#   6. Runs scripts/bootstrap.sh (build images, start services; schema + seed run on backend start)
+#   4. Clones the repo to ~/8021x-lab, or updates an existing checkout
+#   5. Creates .env with a random SECRET_KEY on first install (kept on re-run)
+#   6. Deletes previous lab data volumes (database, RADIUS logs, CA)
+#   7. Runs scripts/bootstrap.sh (build images, start services; schema + seed run on backend start)
 #
 # Options (environment variables):
 #   DOT1X_LAB_DIR=/path      install directory   (default: $HOME/8021x-lab)
 #   DOT1X_LAB_BRANCH=name    git branch          (default: main)
 #   DOT1X_LAB_REPO=url       repository URL      (default: official repo)
+#   DOT1X_LAB_KEEP_DATA=1    skip the volume wipe (in-place update)
 #
 # Prefer to read before you run? Download it first:
 #   curl -fsSLO https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/install.sh
@@ -136,19 +138,32 @@ else
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET}|" .env
 fi
 
-# --- build, start (schema + seed happen inside the backend container) -------------
-# bootstrap.sh needs to talk to Docker. If this session doesn't have the docker
-# group yet (fresh usermod above), `sg docker` activates it for just this command
-# so no reboot is needed mid-install.
-if docker info >/dev/null 2>&1; then
-  ./scripts/bootstrap.sh
-elif getent group docker | grep -qw "${CURRENT_USER}"; then
-  info "Running the bring-up via 'sg docker' (group not active in this session yet)..."
-  sg docker -c "./scripts/bootstrap.sh"
+# Run a command with a working docker client (same fallbacks as bootstrap).
+run_with_docker() {
+  if docker info >/dev/null 2>&1; then
+    "$@"
+  elif getent group docker | grep -qw "${CURRENT_USER}"; then
+    info "Using 'sg docker' (group not active in this session yet)..."
+    sg docker -c "$(printf '%q ' "$@")"
+  else
+    warn "Using sudo for Docker (docker group unavailable)."
+    ${SUDO} "$@"
+  fi
+}
+
+# --- wipe previous lab data (logs, events, users, certs) -------------------------
+# Volumes survive image rebuilds. Without this, a re-install keeps Auth Events
+# and FreeRADIUS auth.log from the last run.
+keep_data="$(printf '%s' "${DOT1X_LAB_KEEP_DATA:-}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${keep_data}" == "1" || "${keep_data}" == "true" || "${keep_data}" == "yes" ]]; then
+  info "DOT1X_LAB_KEEP_DATA is set; keeping the existing database, certs, and RADIUS logs."
 else
-  warn "Running the bring-up with sudo (docker group unavailable)."
-  ${SUDO} ./scripts/bootstrap.sh
+  info "Removing any previous lab data (database, RADIUS logs, certificates)..."
+  run_with_docker ./scripts/reset-lab.sh
 fi
+
+# --- build, start (schema + seed happen inside the backend container) -------------
+run_with_docker ./scripts/bootstrap.sh
 
 # --- done ---------------------------------------------------------------------------
 HOST_IP="$(./scripts/detect-host-ip.sh 2>/dev/null || true)"
@@ -167,4 +182,5 @@ info "Next steps: docs/usage.md (how-to) and docs/concepts.md (what/why)."
 if [[ "${NEED_RELOGIN}" -eq 1 ]]; then
   warn "Log out and back in (or reboot) so 'docker' works without sudo in new sessions."
 fi
-info "Update later by re-running this installer — it pulls the latest code and rebuilds."
+info "Re-run this installer for a clean reinstall (wipes lab data, keeps .env)."
+info "To update without wiping: git pull && make up   (or DOT1X_LAB_KEEP_DATA=1)."
