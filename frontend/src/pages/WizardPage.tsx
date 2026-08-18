@@ -20,6 +20,7 @@ import {
   InfoTip,
   PageHeader,
   Panel,
+  PasswordInput,
   ReplyAttributes,
   StatusBanner,
 } from "../components/ui";
@@ -1013,11 +1014,10 @@ export function WizardPage() {
               />
             </Field>
             <Field label="Password">
-              <input
-                type="password"
-                className="ui-input"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
               />
             </Field>
             <Button disabled={busy} onClick={createUser}>

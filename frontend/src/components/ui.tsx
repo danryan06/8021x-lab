@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import { useState } from "react";
 
 /**
  * Small "i" affordance that reveals a fly-out on hover *and* keyboard focus.
@@ -167,5 +168,36 @@ export function Field({
       <span className="text-ink/80">{label}</span>
       {children}
     </label>
+  );
+}
+
+type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type">;
+
+/**
+ * Password field with the same Reveal/Hide control used for RADIUS shared secrets.
+ * Masked while typing; Reveal shows the value without leaving the field.
+ */
+export function PasswordInput({ className = "ui-input", ...props }: PasswordInputProps) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <span className="flex items-center gap-2">
+      <input
+        {...props}
+        type={revealed ? "text" : "password"}
+        className={`min-w-0 flex-1 ${className}`}
+      />
+      <button
+        type="button"
+        className="mt-1 shrink-0 text-xs text-signal underline-offset-2 hover:underline"
+        aria-pressed={revealed}
+        aria-label={revealed ? "Hide password" : "Reveal password"}
+        onClick={(event) => {
+          event.preventDefault();
+          setRevealed((value) => !value);
+        }}
+      >
+        {revealed ? "Hide" : "Reveal"}
+      </button>
+    </span>
   );
 }

@@ -6,6 +6,7 @@ import {
   type Lab,
   type RadiusUser,
 } from "../api/client";
+import { PasswordInput } from "../components/ui";
 import { useMode } from "../modes/ModeContext";
 
 type GeneratedCredential = {
@@ -340,13 +341,13 @@ export function UsersPage() {
             </label>
             <label className="block text-sm">
               Password
-              <input
-                type="text"
+              <PasswordInput
                 className="ui-input font-mono"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="e.g. apple123"
+                autoComplete="new-password"
               />
             </label>
             <label className="block text-sm">
