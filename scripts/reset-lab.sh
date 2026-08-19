@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Stop the lab and delete its data volumes (database, RADIUS logs, CA material).
 #
-# install.sh runs this so a re-install is a clean slate. `make bootstrap` does
-# not — that path is the in-place updater.
+# install.sh runs this so a re-install is a clean slate. upgrade.sh and
+# `make bootstrap` do not — those paths keep the database, logs, and certs.
 #
 # Also removes leftover volumes from older project names (the directory name
 # `8021x-lab` vs COMPOSE_PROJECT_NAME=dot1x-lab), which is why Auth Events and

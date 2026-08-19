@@ -12,11 +12,13 @@
 #   6. Deletes previous lab data volumes (database, RADIUS logs, CA)
 #   7. Runs scripts/bootstrap.sh (build images, start services; schema + seed run on backend start)
 #
+# This is a clean reinstall. To keep users/events/certs/logs, use upgrade.sh:
+#   curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/upgrade.sh | bash
+#
 # Options (environment variables):
 #   DOT1X_LAB_DIR=/path      install directory   (default: $HOME/8021x-lab)
 #   DOT1X_LAB_BRANCH=name    git branch          (default: main)
 #   DOT1X_LAB_REPO=url       repository URL      (default: official repo)
-#   DOT1X_LAB_KEEP_DATA=1    skip the volume wipe (in-place update)
 #
 # Prefer to read before you run? Download it first:
 #   curl -fsSLO https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/install.sh
@@ -153,14 +155,9 @@ run_with_docker() {
 
 # --- wipe previous lab data (logs, events, users, certs) -------------------------
 # Volumes survive image rebuilds. Without this, a re-install keeps Auth Events
-# and FreeRADIUS auth.log from the last run.
-keep_data="$(printf '%s' "${DOT1X_LAB_KEEP_DATA:-}" | tr '[:upper:]' '[:lower:]')"
-if [[ "${keep_data}" == "1" || "${keep_data}" == "true" || "${keep_data}" == "yes" ]]; then
-  info "DOT1X_LAB_KEEP_DATA is set; keeping the existing database, certs, and RADIUS logs."
-else
-  info "Removing any previous lab data (database, RADIUS logs, certificates)..."
-  run_with_docker ./scripts/reset-lab.sh
-fi
+# and FreeRADIUS auth.log from the last run. Keep that data with upgrade.sh.
+info "Removing any previous lab data (database, RADIUS logs, certificates)..."
+run_with_docker ./scripts/reset-lab.sh
 
 # --- build, start (schema + seed happen inside the backend container) -------------
 run_with_docker ./scripts/bootstrap.sh
@@ -183,4 +180,4 @@ if [[ "${NEED_RELOGIN}" -eq 1 ]]; then
   warn "Log out and back in (or reboot) so 'docker' works without sudo in new sessions."
 fi
 info "Re-run this installer for a clean reinstall (wipes lab data, keeps .env)."
-info "To update without wiping: git pull && make up   (or DOT1X_LAB_KEEP_DATA=1)."
+info "To update without wiping: curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/upgrade.sh | bash"

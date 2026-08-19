@@ -101,6 +101,8 @@
 
 - Linux one-line installer (`scripts/install.sh`) plus schema/seed on backend
   start, so a fresh machine is a single command (Compose-on-Linux path)
+- In-place upgrade (`scripts/upgrade.sh`) that pulls, rebuilds, and keeps
+  `.env` plus lab data volumes
 - Ubuntu LTS image path, health UI, non-Docker operator UX
 - Later: OVA, Proxmox, Raspberry Pi prebuilt image
 

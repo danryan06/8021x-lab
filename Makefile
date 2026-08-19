@@ -1,4 +1,4 @@
-.PHONY: up down reset logs migrate seed backend-shell frontend-shell ps bootstrap test-peap lint test
+.PHONY: up down reset logs migrate seed backend-shell frontend-shell ps bootstrap upgrade test-peap lint test
 
 up:
 	docker compose up -d --build
@@ -29,6 +29,9 @@ frontend-shell:
 
 bootstrap:
 	./scripts/bootstrap.sh
+
+upgrade:
+	./scripts/upgrade.sh
 
 test-peap:
 	./scripts/test-peap.sh

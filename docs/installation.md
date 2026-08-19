@@ -40,8 +40,9 @@ bash install.sh        # then run it
   `sudo` in future sessions.
 - **Re-running is a clean reinstall.** It pulls the latest code, deletes the
   previous lab database / RADIUS logs / certificates, and starts fresh. Your
-  `.env` (admin password, secrets) is kept. To update *without* wiping data:
-  `git pull && make up`, or `DOT1X_LAB_KEEP_DATA=1 bash install.sh`.
+  `.env` (admin password, secrets) is kept.
+- **To update without wiping data**, use the upgrade script (see
+  [Updating to the latest version](#updating-to-the-latest-version)).
 - macOS/Windows aren't covered by the script — follow the manual steps below
   with Docker Desktop.
 
@@ -260,25 +261,57 @@ plain `docker compose` form do the same thing.
 |------|-------------|-----------------------|
 | Start | `make up` | `docker compose up -d` |
 | Stop (keeps data) | `make down` | `docker compose down` |
+| Upgrade (keep data) | `make upgrade` | `./scripts/upgrade.sh` |
 | Clean reinstall (wipe data) | `make reset` then `make up` | `./scripts/reset-lab.sh` then `docker compose up -d --build` |
 | View logs | `make logs` | `docker compose logs -f` |
 | See service status | `make ps` | `docker compose ps` |
 
 Your data (users, certificates, events, RADIUS logs) lives in Docker volumes and
-survives stop/start. The one-line installer deletes those volumes on every
-re-run so you get a clean lab. `make bootstrap` / `make up` do **not** wipe.
+survives stop/start. The one-line **installer** deletes those volumes on every
+re-run so you get a clean lab. The **upgrade** script, `make bootstrap`, and
+`make up` do **not** wipe.
 
 ---
 
 ## Updating to the latest version
 
-If you cloned with Git, update in place:
+On 64-bit Linux (including Raspberry Pi OS), one command pulls the latest code,
+rebuilds, and restarts **without** deleting users, events, certificates, or
+RADIUS logs:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/upgrade.sh | bash
+```
+
+Prefer to read it first:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/upgrade.sh
+less upgrade.sh
+bash upgrade.sh
+```
+
+Already inside the project folder:
+
+```bash
+make upgrade
+# same as: ./scripts/upgrade.sh
+```
+
+Schema updates apply when the backend container starts — you do not run a
+separate migrate command. Your `.env` is kept.
+
+macOS/Windows (Docker Desktop), or a manual Git checkout:
 
 ```bash
 cd ~/8021x-lab
 git pull                       # download the latest code
 make up                        # rebuild and restart; schema updates apply on backend start
 ```
+
+Want a **clean lab** instead (empty events, new CA, default users)? Re-run
+the [installer](#fast-path-one-line-install-linux--raspberry-pi) — it wipes
+data volumes and keeps `.env`.
 
 ---
 
@@ -332,6 +365,7 @@ make down
 
 # Full reset: delete all data (users, certs, events, RADIUS logs, database)
 # The one-line installer does this automatically on every re-run.
+# The upgrade script does not.
 make reset
 # same as: docker compose down -v   (plus leftover volumes from older project names)
 

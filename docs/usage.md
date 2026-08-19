@@ -12,7 +12,9 @@ For install/setup and the command reference, see
 
 1. Bring up the stack with the installer (`scripts/install.sh`) or
    `make bootstrap`. The database schema and Default Lab are created as the
-   API starts.
+   API starts. To keep existing lab data while taking a newer version, use
+   `scripts/upgrade.sh` / `make upgrade` (see the
+   [installation guide](installation.md#updating-to-the-latest-version)).
 2. Open the UI at http://localhost:3000 and log in with the admin credentials
    from your `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
 3. You'll land on the **Dashboard**: live health for the database, API, and

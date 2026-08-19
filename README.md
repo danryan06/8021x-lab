@@ -20,6 +20,12 @@ database schema, and the UI. You do not run a separate migrate command.
 Re-running the installer wipes previous lab data (events, RADIUS logs, certs)
 and starts clean; it keeps your `.env`.
 
+**Upgrade** (keep users, events, certificates, and RADIUS logs):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danryan06/8021x-lab/main/scripts/upgrade.sh | bash
+```
+
 Already have Docker + Git and prefer the manual way:
 
 ```bash
@@ -80,13 +86,13 @@ backend/          FastAPI control plane
 frontend/         React SPA
 services/         FreeRADIUS + CA adapter notes/templates
 docs/             Architecture, setup, deployment, roadmap
-scripts/          One-line installer + bootstrap helpers
+scripts/          Installer, upgrade script, and bootstrap helpers
 docker-compose.yml
 ```
 
 ## Documentation
 
-- [Installation](docs/installation.md) — from-scratch setup (Docker, Git, clone, first login), incl. Raspberry Pi
+- [Installation](docs/installation.md) — from-scratch setup (Docker, Git, clone, first login), incl. Raspberry Pi, plus how to upgrade in place
 - [Concepts](docs/concepts.md) — what 802.1X, RADIUS, PEAP/EAP-TLS, and certificates are, and why
 - [Usage guide](docs/usage.md) — step-by-step how-to for every feature
 - [Deploying to devices](docs/deploying-to-devices.md) — install a cert on an endpoint; set up a switch port / Wi-Fi SSID for 802.1X
