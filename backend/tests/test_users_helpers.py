@@ -1,6 +1,15 @@
 import string
 
-from app.services.users import _build_username, _generate_password, users_csv_template
+from uuid import uuid4
+
+from app.schemas.entities import GenerateUsersRequest
+from app.services.users import (
+    DEPARTMENTS,
+    _build_username,
+    _generate_password,
+    _pick_department,
+    users_csv_template,
+)
 
 
 class TestGeneratePassword:
@@ -34,6 +43,29 @@ class TestBuildUsername:
 
     def test_names_are_slugged(self) -> None:
         assert _build_username("first_last", "user", 1, "Mary Jane", "O'Neil") == "maryjane.oneil1"
+
+
+class TestPickDepartment:
+    def test_omitted_when_not_included(self) -> None:
+        payload = GenerateUsersRequest(lab_id=uuid4(), include_department=False)
+        assert _pick_department(payload) is None
+
+    def test_fixed_value(self) -> None:
+        payload = GenerateUsersRequest(
+            lab_id=uuid4(),
+            include_department=True,
+            randomize_department=False,
+            department="Sales",
+        )
+        assert _pick_department(payload) == "Sales"
+
+    def test_random_picks_from_catalog(self) -> None:
+        payload = GenerateUsersRequest(
+            lab_id=uuid4(),
+            include_department=True,
+            randomize_department=True,
+        )
+        assert _pick_department(payload) in DEPARTMENTS
 
 
 def test_csv_template_has_expected_header() -> None:

@@ -66,6 +66,19 @@ LAST_NAMES = [
     "Clark",
 ]
 
+DEPARTMENTS = [
+    "Engineering",
+    "Sales",
+    "Finance",
+    "IT",
+    "Human Resources",
+    "Marketing",
+    "Operations",
+    "Facilities",
+    "Legal",
+    "Support",
+]
+
 # Short memorable words for lab passwords (easy to type during demos).
 PASSWORD_WORDS = [
     "apple",
@@ -192,6 +205,14 @@ def _build_username(
     return f"{prefix}{index:03d}"
 
 
+def _pick_department(payload: GenerateUsersRequest) -> str | None:
+    if not payload.include_department:
+        return None
+    if payload.randomize_department:
+        return secrets.choice(DEPARTMENTS)
+    return payload.department
+
+
 def generate_users(db: Session, payload: GenerateUsersRequest) -> GenerateUsersResponse:
     credentials: list[GeneratedUserCredential] = []
     created_users: list[RadiusUser] = []
@@ -205,7 +226,7 @@ def generate_users(db: Session, payload: GenerateUsersRequest) -> GenerateUsersR
     while len(created_users) < payload.count:
         first_name = secrets.choice(FIRST_NAMES) if payload.include_first_name else None
         last_name = secrets.choice(LAST_NAMES) if payload.include_last_name else None
-        department = payload.department if payload.include_department else None
+        department = _pick_department(payload)
         groups = list(payload.groups) if payload.include_groups else []
 
         username = _build_username(

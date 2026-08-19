@@ -292,9 +292,7 @@ Access-Accept says. The parts that *are* wireless-specific are worth knowing:
 The **Wizard → wireless** path walks all of this: name the SSID, create an
 identity, give it a VLAN, register the controller, run a live test, and finish
 with the exact values to type into the AP/WLC. **Wired and wireless** does the
-same SSID flow and then both checklists (switch ports and the AP/WLC). A
-classroom **guest SSID** is usually Central Web Auth (MAB → splash page → CoA);
-the **Guest** page is the lab stand-in for that portal.
+same SSID flow and then both checklists (switch ports and the AP/WLC).
 
 ## Authentication events: seeing what happened
 

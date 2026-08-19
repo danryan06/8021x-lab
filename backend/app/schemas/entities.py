@@ -108,6 +108,7 @@ class GenerateUsersRequest(BaseModel):
     include_department: bool = True
     include_groups: bool = True
     department: str | None = Field(default="Engineering", max_length=128)
+    randomize_department: bool = False
     groups: list[str] = Field(default_factory=lambda: ["students"])
     # Lab-friendly passwords (word+digits) by default.
     password_style: str = Field(default="easy", pattern="^(easy|random)$")

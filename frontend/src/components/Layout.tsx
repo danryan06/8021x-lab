@@ -13,7 +13,6 @@ const links = [
   { to: "/certificates", label: "Certificates" },
   { to: "/events", label: "Auth Events" },
   { to: "/wizard", label: "Wizard" },
-  { to: "/guest", label: "Guest" },
 ];
 
 export function Layout() {

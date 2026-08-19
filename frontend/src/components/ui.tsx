@@ -156,16 +156,21 @@ export function ReplyAttributes({
 
 export function Field({
   label,
+  tip,
   children,
   className = "",
 }: {
   label: string;
+  tip?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <label className={`block text-sm ${className}`}>
-      <span className="text-ink/80">{label}</span>
+      <span className="inline-flex items-center gap-1.5 text-ink/80">
+        {label}
+        {tip}
+      </span>
       {children}
     </label>
   );

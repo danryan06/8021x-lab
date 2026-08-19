@@ -11,6 +11,7 @@ import {
   type RadiusUser,
 } from "../api/client";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
+import { LabSelect } from "../components/LabSelect";
 import { InfoTip, PasswordInput, ReplyAttributes } from "../components/ui";
 import { useMode } from "../modes/ModeContext";
 
@@ -230,23 +231,14 @@ export function AuthTestPage() {
 
       <form onSubmit={onSubmit} className="space-y-4 ui-panel p-5">
         <div className="flex flex-wrap gap-4">
-          <label className="text-sm">
-            Lab
-            <select
-              className="mt-1 block ui-btn-ghost px-3 py-2"
-              value={labId}
-              onChange={(e) => {
-                setLabId(e.target.value);
-                loadLab(e.target.value).catch((err: Error) => setError(err.message));
-              }}
-            >
-              {labs.map((lab) => (
-                <option key={lab.id} value={lab.id}>
-                  {lab.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <LabSelect
+            labs={labs}
+            value={labId}
+            onChange={(next) => {
+              setLabId(next);
+              loadLab(next).catch((err: Error) => setError(err.message));
+            }}
+          />
           <label className="text-sm">
             Method
             <select

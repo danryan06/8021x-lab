@@ -279,22 +279,6 @@ opening every event. Common reject summaries:
 | Unknown MAC address | No endpoint registered for that MAC | Add it on **Endpoints** |
 | Endpoint is disabled | Registered but not synced to FreeRADIUS | Re-enable it on **Endpoints** |
 
-## Guide: guest / captive portal
-
-A real guest SSID uses **Central Web Auth**: the client is MAB-accepted into a
-redirect VLAN, hits a splash page, then RADIUS sends CoA into a guest VLAN.
-This lab cannot intercept that HTTP redirect, so the **Guest** page *is* the
-portal.
-
-1. Open **Guest**, pick a lab, optionally a name and duration, and **Connect**.
-2. The lab creates a PEAP user in the `guests` group (password shown once) and,
-   on the first guest, an authorization policy that returns the guest VLAN /
-   `Filter-Id`.
-3. Prove it with **Auth Test → PEAP**, or from **Endpoints** push CoA after a
-   MAB session if you are simulating the post-portal VLAN change.
-
-Advanced mode lets you set the VLAN and role; Simple uses VLAN 40 / `guest-acl`.
-
 ## Guide: keeping FreeRADIUS in sync
 
 Most changes sync automatically, but **Sync to FreeRADIUS** (Dashboard, Users,
@@ -303,7 +287,6 @@ Clients) forces a full resync after bulk edits. What each change does:
 | Action | FreeRADIUS effect |
 |--------|-------------------|
 | Create/update/delete/generate/import user | Upsert/delete `radcheck` NT-Password |
-| Guest portal Connect | Same as create user (`guests` group) plus a Guest VLAN policy if missing |
 | Create/update/delete RADIUS client | Rewrite clients config + controlled restart |
 | Create/update/delete/generate endpoint | Upsert/delete `radcheck` (`Auth-Type := Accept`) + `radreply` for every MAC spelling |
 | Disconnect / Push policy (CoA) | `radclient` Disconnect-Request or CoA-Request to the NAS (UDP 3799) or the lab CoA sink |

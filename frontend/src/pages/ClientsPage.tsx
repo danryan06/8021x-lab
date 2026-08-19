@@ -6,6 +6,7 @@ import {
   type RadiusClient,
 } from "../api/client";
 import { RadiusTargetPanel } from "../components/RadiusTargetPanel";
+import { LabSelect } from "../components/LabSelect";
 import { useMode } from "../modes/ModeContext";
 
 export function ClientsPage() {
@@ -86,9 +87,11 @@ export function ClientsPage() {
     <div className="page-enter space-y-8">
       <section>
         <h1 className="font-display text-3xl font-bold">RADIUS Clients</h1>
-        <p className="mt-1 text-ink/70">
-          Network access devices (switches, WLCs, APs) that send RADIUS requests. Changes sync into
-          FreeRADIUS immediately.
+        <p className="mt-1 max-w-3xl text-ink/70">
+          Each row is a <span className="font-medium">NAS</span> (Network Access Server) — the
+          switch, wireless LAN controller, or access point that asks RADIUS whether a device
+          may join the network. FreeRADIUS will not accept requests from an address that is not
+          listed here. Changes sync immediately.
         </p>
       </section>
 
@@ -98,23 +101,14 @@ export function ClientsPage() {
       {labId && <RadiusTargetPanel labId={labId} />}
 
       <div className="flex flex-wrap items-end gap-4">
-        <label className="block text-sm">
-          Lab
-          <select
-            className="mt-1 block ui-btn-ghost px-3 py-2"
-            value={labId}
-            onChange={(e) => {
-              setLabId(e.target.value);
-              refresh(e.target.value).catch((err: Error) => setError(err.message));
-            }}
-          >
-            {labs.map((lab) => (
-              <option key={lab.id} value={lab.id}>
-                {lab.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LabSelect
+          labs={labs}
+          value={labId}
+          onChange={(next) => {
+            setLabId(next);
+            refresh(next).catch((err: Error) => setError(err.message));
+          }}
+        />
         <button
           type="button"
           onClick={syncLab}

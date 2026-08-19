@@ -92,10 +92,10 @@
   one address (which made FreeRADIUS refuse to start), the clients file covers
   every lab instead of only the one being synced, and a duplicate lab name is
   explained instead of returning a 500
-- Remaining: none for the guided paths. Guest/captive-portal analogue lives on
-  the **Guest** page (short-lived PEAP users in the `guests` group). The wizard
-  **wired and wireless** medium runs the SSID flow and both checklists. The
-  Dashboard lists each lab's stored SSID and its RADIUS clients.
+- Remaining: none for the guided paths. A captive-portal analogue is deferred —
+  the lab does not intercept HTTP redirects. The wizard **wired and wireless**
+  medium runs the SSID flow and both checklists. The Dashboard lists each lab's
+  stored SSID and its RADIUS clients.
 
 ## Phase 5 — Appliance packaging
 

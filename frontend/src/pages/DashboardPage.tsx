@@ -119,7 +119,12 @@ export function DashboardPage() {
     <div className="page-enter space-y-8">
       <PageHeader
         title="Dashboard"
-        subtitle="Live lab status: database, API, FreeRADIUS, lab inventory, and the latest authentication event."
+        subtitle="Live lab status: database, API, FreeRADIUS, and the latest authentication event."
+        actions={
+          <Button variant="ghost" disabled={syncing} onClick={syncAll}>
+            {syncing ? "Syncing…" : "Sync to FreeRADIUS"}
+          </Button>
+        }
       />
 
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
@@ -236,61 +241,6 @@ export function DashboardPage() {
 
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-xl font-semibold">Recent MAB activity</h2>
-          <Link
-            className="text-sm text-signal underline-offset-2 hover:underline"
-            to="/endpoints"
-          >
-            Manage endpoints
-          </Link>
-        </div>
-        {mabEvents.length === 0 ? (
-          <p className="mt-3 text-sm text-ink/60">
-            No MAB attempts yet. Register a MAC on the{" "}
-            <Link className="underline" to="/endpoints">
-              Endpoints
-            </Link>{" "}
-            page, then run a MAB test from the{" "}
-            <Link className="underline" to="/test">
-              Authentication Test
-            </Link>{" "}
-            page.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2 text-sm">
-            {mabEvents.map((event) => (
-              <li
-                key={event.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink/5 pb-2 last:border-0 last:pb-0"
-              >
-                <span className="font-mono text-xs text-ink/50">
-                  {new Date(event.timestamp).toLocaleTimeString()}
-                </span>
-                <span className="font-mono">{event.identity || "—"}</span>
-                <span
-                  className={
-                    event.result === "success"
-                      ? "font-medium text-signal"
-                      : "font-medium text-fail"
-                  }
-                >
-                  {event.result === "success" ? "Accept" : "Reject"}
-                </span>
-                {event.result === "success" ? (
-                  <ReplyAttributes attributes={event.returned_attributes} />
-                ) : (
-                  <span className="text-ink/60">
-                    {event.failure_summary || event.failure_reason || "—"}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl font-semibold">Last authentication event</h2>
           <Link className="text-sm text-signal underline-offset-2 hover:underline" to="/events">
             View all events
@@ -343,52 +293,59 @@ export function DashboardPage() {
       </Panel>
 
       <Panel>
-        <h2 className="font-display text-xl font-semibold">Labs</h2>
-        {labs.length === 0 ? (
-          <p className="mt-2 text-sm text-ink/60">
-            No labs yet. Run <code>make seed</code> or use the Wizard.
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold">Recent MAB activity</h2>
+          <Link
+            className="text-sm text-signal underline-offset-2 hover:underline"
+            to="/endpoints"
+          >
+            Manage endpoints
+          </Link>
+        </div>
+        {mabEvents.length === 0 ? (
+          <p className="mt-3 text-sm text-ink/60">
+            No MAB attempts yet. Register a MAC on the{" "}
+            <Link className="underline" to="/endpoints">
+              Endpoints
+            </Link>{" "}
+            page, then run a MAB test from the{" "}
+            <Link className="underline" to="/test">
+              Authentication Test
+            </Link>{" "}
+            page.
           </p>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {labs.map((lab) => (
-              <li key={lab.id} className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-medium">{lab.name}</p>
-                  <p className="text-sm text-ink/60">{lab.description}</p>
-                </div>
-                {isAdvanced && <code className="text-xs text-ink/45">{lab.id}</code>}
+          <ul className="mt-3 space-y-2 text-sm">
+            {mabEvents.map((event) => (
+              <li
+                key={event.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink/5 pb-2 last:border-0 last:pb-0"
+              >
+                <span className="font-mono text-xs text-ink/50">
+                  {new Date(event.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="font-mono">{event.identity || "—"}</span>
+                <span
+                  className={
+                    event.result === "success"
+                      ? "font-medium text-signal"
+                      : "font-medium text-fail"
+                  }
+                >
+                  {event.result === "success" ? "Accept" : "Reject"}
+                </span>
+                {event.result === "success" ? (
+                  <ReplyAttributes attributes={event.returned_attributes} />
+                ) : (
+                  <span className="text-ink/60">
+                    {event.failure_summary || event.failure_reason || "—"}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         )}
       </Panel>
-
-      <section className="flex flex-wrap gap-3">
-        <Link className="ui-btn-signal" to="/wizard">
-          Guided lab wizard
-        </Link>
-        <Link className="ui-btn-ghost" to="/test">
-          Authentication Test
-        </Link>
-        <Link className="ui-btn-ghost" to="/users">
-          Manage users
-        </Link>
-        <Link className="ui-btn-ghost" to="/endpoints">
-          Endpoints
-        </Link>
-        <Link className="ui-btn-ghost" to="/policies">
-          Authorization
-        </Link>
-        <Link className="ui-btn-ghost" to="/clients">
-          RADIUS clients
-        </Link>
-        <Link className="ui-btn-ghost" to="/guest">
-          Guest portal
-        </Link>
-        <Button variant="ghost" disabled={syncing} onClick={syncAll}>
-          {syncing ? "Syncing…" : "Sync to FreeRADIUS"}
-        </Button>
-      </section>
     </div>
   );
 }

@@ -968,6 +968,11 @@ export function WizardPage() {
               Lab
               <StepTip id="lab" method={method} medium={medium} label="Create or select lab" />
             </h2>
+            <p className="text-sm text-ink/60">
+              A lab is a named container for users, certificates, and RADIUS clients. One is
+              enough for almost every demo — create another only if you want a completely
+              separate scenario that does not share those objects.
+            </p>
             {labs.length > 0 && (
               <div className="flex flex-col gap-2">
                 {(

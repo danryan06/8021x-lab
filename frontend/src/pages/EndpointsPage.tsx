@@ -11,6 +11,7 @@ import {
   type SessionActionTargets,
 } from "../api/client";
 import { InfoTip, ReplyAttributes } from "../components/ui";
+import { LabSelect } from "../components/LabSelect";
 import { useMode } from "../modes/ModeContext";
 
 type BulkResponse = {
@@ -313,25 +314,16 @@ export function EndpointsPage() {
       {status && <p className="text-signal">{status}</p>}
 
       <div className="flex flex-wrap items-end gap-4">
-        <label className="text-sm">
-          Lab
-          <select
-            className="mt-1 block ui-btn-ghost px-3 py-2"
-            value={labId}
-            onChange={(e) => {
-              setLabId(e.target.value);
-              setCoaTarget("");
-              setLastCoa(null);
-              refresh(e.target.value).catch((err: Error) => setError(err.message));
-            }}
-          >
-            {labs.map((lab) => (
-              <option key={lab.id} value={lab.id}>
-                {lab.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LabSelect
+          labs={labs}
+          value={labId}
+          onChange={(next) => {
+            setLabId(next);
+            setCoaTarget("");
+            setLastCoa(null);
+            refresh(next).catch((err: Error) => setError(err.message));
+          }}
+        />
         <button type="button" onClick={syncLab} className="ui-btn-ghost px-3 py-2 text-sm">
           Sync to FreeRADIUS
         </button>

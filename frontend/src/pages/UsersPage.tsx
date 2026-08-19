@@ -8,6 +8,7 @@ import {
   type RadiusUser,
 } from "../api/client";
 import { PasswordInput } from "../components/ui";
+import { LabSelect } from "../components/LabSelect";
 import { useMode } from "../modes/ModeContext";
 
 type GeneratedCredential = {
@@ -65,6 +66,7 @@ export function UsersPage() {
   const [includeDepartment, setIncludeDepartment] = useState(true);
   const [includeGroups, setIncludeGroups] = useState(true);
   const [genDepartment, setGenDepartment] = useState("Engineering");
+  const [randomizeDepartment, setRandomizeDepartment] = useState(false);
   const [genGroupsText, setGenGroupsText] = useState("students");
   const [passwordStyle, setPasswordStyle] = useState<"easy" | "random">("easy");
   const [passwordLength, setPasswordLength] = useState(8);
@@ -173,7 +175,8 @@ export function UsersPage() {
           include_last_name: includeLastName,
           include_department: includeDepartment,
           include_groups: includeGroups,
-          department: includeDepartment ? genDepartment || null : null,
+          department: includeDepartment && !randomizeDepartment ? genDepartment || null : null,
+          randomize_department: includeDepartment && randomizeDepartment,
           groups: includeGroups ? parseGroups(genGroupsText) : [],
           password_style: passwordStyle,
           password_length: passwordLength,
@@ -381,24 +384,15 @@ export function UsersPage() {
       {status && <p className="text-signal">{status}</p>}
 
       <div className="flex flex-wrap items-end gap-4">
-        <label className="text-sm">
-          Lab
-          <select
-            className="mt-1 block ui-btn-ghost px-3 py-2"
-            value={labId}
-            onChange={(e) => {
-              setLabId(e.target.value);
-              setEditingId(null);
-              refresh(e.target.value).catch((err: Error) => setError(err.message));
-            }}
-          >
-            {labs.map((lab) => (
-              <option key={lab.id} value={lab.id}>
-                {lab.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LabSelect
+          labs={labs}
+          value={labId}
+          onChange={(next) => {
+            setLabId(next);
+            setEditingId(null);
+            refresh(next).catch((err: Error) => setError(err.message));
+          }}
+        />
         <button type="button" onClick={syncLab} className="ui-btn-ghost px-3 py-2 text-sm">
           Sync to FreeRADIUS
         </button>
@@ -571,14 +565,25 @@ export function UsersPage() {
               </label>
             )}
             {includeDepartment && (
-              <label className="block text-sm">
-                Department value
-                <input
-                  className="ui-input"
-                  value={genDepartment}
-                  onChange={(e) => setGenDepartment(e.target.value)}
-                />
-              </label>
+              <div className="block text-sm">
+                <span className="text-ink/80">Department</span>
+                <select
+                  className="ui-input mt-1"
+                  value={randomizeDepartment ? "random" : "fixed"}
+                  onChange={(e) => setRandomizeDepartment(e.target.value === "random")}
+                >
+                  <option value="fixed">Same department for everyone</option>
+                  <option value="random">Randomize (Engineering, Sales, IT, …)</option>
+                </select>
+                {!randomizeDepartment && (
+                  <input
+                    className="ui-input mt-2"
+                    value={genDepartment}
+                    onChange={(e) => setGenDepartment(e.target.value)}
+                    placeholder="Engineering"
+                  />
+                )}
+              </div>
             )}
             {includeGroups && (
               <label className="block text-sm">
